@@ -32,11 +32,22 @@ struct rte_eth_txmode {
   // we don't care about other members
 };
 
+struct rte_eth_rss_conf {
+  uint8_t   *rss_key;
+  uint8_t   rss_key_len;
+  uint64_t  rss_hf;
+};
+
 struct rte_eth_conf {
   struct {
     uint8_t hw_strip_crc;
+    enum rte_eth_rx_mq_mode mq_mode; // CHANGE
   } rxmode;
-  struct rte_eth_txmode txmode;
+
+  // CHANGE
+  struct {
+    struct rte_eth_rss_conf rss_conf;
+  } rx_adv_conf;
 
   /* Don't care about other members */
 };

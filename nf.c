@@ -97,6 +97,15 @@ void flood(struct rte_mbuf *frame, uint16_t skip_device, uint16_t nb_devices) {
 // Buffer count for mempools
 static const unsigned MEMPOOL_BUFFER_COUNT = 256;
 
+#define RSS_HASH_KEY_LENGTH 40
+static uint8_t hash_key[RSS_HASH_KEY_LENGTH] = {
+        0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A,
+        0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A,
+        0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A,
+        0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A,
+        0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A, 0x6D, 0x5A,
+};
+
 // --- Initialization ---
 static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   int retval;
@@ -105,6 +114,15 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   struct rte_eth_conf device_conf;
   memset(&device_conf, 0, sizeof(struct rte_eth_conf));
   device_conf.rxmode.hw_strip_crc = 1;
+
+  // RSS configuration (symmetric RSS using hash function defined above)
+  device_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+  struct rte_eth_rss_conf rss_conf;
+  rss_conf.rss_key = hash_key;
+  rss_conf.rss_key_len = RSS_HASH_KEY_LENGTH;
+  rss_conf.rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP | ETH_RSS_SCTP;
+
+  device_conf.rx_adv_conf.rss_conf = rss_conf;
 
   // Configure the device
   retval = rte_eth_dev_configure(device, RX_QUEUES_COUNT, TX_QUEUES_COUNT,
@@ -227,6 +245,17 @@ int MAIN(int argc, char *argv[]) {
 
   // Run!
   // ...in single-threaded mode, that is.
+  
+  // ... UNTIL NOW
+
+  unsigned lcore_id;
+
+  // call on each slave
+  RTE_LCORE_FOREACH_SLAVE(lcore_id) {
+    rte_eal_remote_launch((int (*)(void *))(&lcore_main), NULL, lcore_id);
+  }
+
+  // call on master
   lcore_main();
 
   return 0;
