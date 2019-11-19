@@ -187,6 +187,18 @@ static void lcore_main(void) {
     struct rte_mbuf *mbuf;
     if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {
       uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
+
+      // RSS debug
+      struct ether_hdr *ether_header = nf_then_get_ether_header(packet);
+      uint8_t *ip_options;
+      struct ipv4_hdr *ipv4_header = nf_then_get_ipv4_header(ether_header, packet, &ip_options);
+
+      if (ipv4_header == NULL) {
+        NF_INFO("[%u] NULL ipv4 header", rte_lcore_id());
+      } else {
+        NF_INFO("[%u] %u -> %u", rte_lcore_id(), ipv4_header->src_addr, ipv4_header->dst_addr);
+      }
+
       uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
       nf_return_all_chunks(packet);
 
@@ -250,13 +262,8 @@ int MAIN(int argc, char *argv[]) {
 
   unsigned lcore_id;
 
-  // call on each slave
-  RTE_LCORE_FOREACH_SLAVE(lcore_id) {
-    rte_eal_remote_launch((int (*)(void *))(&lcore_main), NULL, lcore_id);
-  }
-
-  // call on master
-  lcore_main();
+  // call on each lcore
+  rte_eal_mp_remote_launch((lcore_function_t *)lcore_main, NULL, CALL_MASTER);
 
   return 0;
 }

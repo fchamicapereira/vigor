@@ -117,6 +117,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
       nf_then_get_ipv4_header(ether_header, buffer, &ip_options);
   if (ipv4_header == NULL) {
     NF_DEBUG("Not IPv4, dropping");
+    puts("dropping");
     return device;
   }
 
