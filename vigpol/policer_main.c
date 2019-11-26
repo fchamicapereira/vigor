@@ -17,6 +17,7 @@
 
 struct nf_config config;
 
+// TODO: array of this for shared mem
 struct State *dynamic_ft;
 
 int policer_expire_entries(vigor_time_t time) {
@@ -120,6 +121,8 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     puts("dropping");
     return device;
   }
+
+  NF_INFO("[%u] %u -> %u", rte_lcore_id(), ipv4_header->src_addr, ipv4_header->dst_addr);
 
   policer_expire_entries(now);
 

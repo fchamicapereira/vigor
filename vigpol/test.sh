@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)
 
 function cleanup {
-  sudo killall policer 2>/dev/null || true
+  sudo killall nf 2>/dev/null || true
   sudo killall iperf 2>/dev/null || true
   sudo ip netns delete lan 2>/dev/null || true
   sudo ip netns delete wan 2>/dev/null || true
@@ -25,8 +25,8 @@ function test_policer {
         --wan 0 \
         --rate $RATE \
         --burst $BURST \
-        --capacity 65536 \
-        #>/dev/null 2>/dev/null &
+        --capacity 65536 &
+        # >/dev/null 2>/dev/null &
   NF_PID=$!
 
   while [ ! -f /sys/class/net/test_lan/tun_flags -o \
@@ -39,12 +39,12 @@ function test_policer {
   sudo ip netns add lan
   sudo ip link set test_lan netns lan
   sudo ip netns exec lan ifconfig test_lan up 10.0.0.1
-  LAN_MAC=$(sudo ip netns exec lan ifconfig test_lan | head -n 1 | awk '{ print $5 }')
+  LAN_MAC=$(sudo ip netns exec lan ifconfig test_lan | awk 'NR==4 { print $2 }')
 
   sudo ip netns add wan
   sudo ip link set test_wan netns wan
   sudo ip netns exec wan ifconfig test_wan up 10.0.0.2
-  WAN_MAC=$(sudo ip netns exec wan ifconfig test_wan | head -n 1 | awk '{ print $5 }')
+  WAN_MAC=$(sudo ip netns exec wan ifconfig test_wan | awk 'NR==4 { print $2 }')
 
   sudo ip netns exec lan arp -i test_lan -s 10.0.0.2 $WAN_MAC
   sudo ip netns exec wan arp -i test_wan -s 10.0.0.1 $LAN_MAC
@@ -57,7 +57,7 @@ function test_policer {
   sudo killall iperf
   wait $SERVER_PID 2>/dev/null || true
 
-  sudo killall policer
+  sudo killall nf
   wait $NF_PID 2>/dev/null || true
 
   sudo ip netns delete lan
