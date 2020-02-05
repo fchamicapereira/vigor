@@ -120,7 +120,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   struct rte_eth_rss_conf rss_conf;
   rss_conf.rss_key = hash_key;
   rss_conf.rss_key_len = RSS_HASH_KEY_LENGTH;
-  rss_conf.rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP | ETH_RSS_SCTP;
+  rss_conf.rss_hf = ETH_RSS_IP;
 
   device_conf.rx_adv_conf.rss_conf = rss_conf;
 
