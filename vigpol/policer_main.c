@@ -133,7 +133,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     return device;
   }
 
-  NF_INFO("[%u] %d.%d.%d.%d -> %d.%d.%d.%d",
+  NF_DEBUG("[%u] %d.%d.%d.%d -> %d.%d.%d.%d",
     rte_lcore_id(),
     (ipv4_header->src_addr >>  0) & 0xff,
     (ipv4_header->src_addr >>  8) & 0xff,

@@ -59,6 +59,8 @@ static struct nested_field_descr ether_nested_fields[] = {
 };
 #endif // KLEE_VERIFICATION
 
+void nf_util_init();
+
 bool nf_has_ipv4_header(struct ether_hdr *header);
 
 bool nf_has_tcpudp_header(struct ipv4_hdr *header);
@@ -74,15 +76,16 @@ char *nf_mac_to_str(struct ether_addr *addr);
 char *nf_ipv4_to_str(uint32_t addr);
 
 #define MAX_N_CHUNKS 100
-extern void *chunks_borrowed[];
-extern size_t chunks_borrowed_num;
+extern void ***chunks_borrowed;
+extern size_t *chunks_borrowed_num;
 
 static inline void *nf_borrow_next_chunk(void *p, size_t length) {
-  assert(chunks_borrowed_num < MAX_N_CHUNKS);
+  assert(chunks_borrowed_num[rte_lcore_id()] < MAX_N_CHUNKS);
+  unsigned lcore_id = rte_lcore_id();
   void *chunk;
   packet_borrow_next_chunk(p, length, &chunk);
-  chunks_borrowed[chunks_borrowed_num] = chunk;
-  chunks_borrowed_num++;
+  chunks_borrowed[lcore_id][chunks_borrowed_num[lcore_id]] = chunk;
+  chunks_borrowed_num[lcore_id]++;
   return chunk;
 }
 
@@ -105,10 +108,11 @@ static inline void *nf_borrow_next_chunk(void *p, size_t length) {
                     sizeof(fields) / sizeof(fields[0]), NULL, 0, #str_name);
 
 static inline void nf_return_all_chunks(void *p) {
+  unsigned lcore_id = rte_lcore_id();
   do {
-    chunks_borrowed_num--;
-    packet_return_chunk(p, chunks_borrowed[chunks_borrowed_num]);
-  } while (chunks_borrowed_num != 0);
+    chunks_borrowed_num[lcore_id]--;
+    packet_return_chunk(p, chunks_borrowed[lcore_id][chunks_borrowed_num[lcore_id]]);
+  } while (chunks_borrowed_num[lcore_id] != 0);
 }
 
 static inline struct ether_hdr *nf_then_get_ether_header(void *p) {

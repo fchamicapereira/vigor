@@ -34,8 +34,8 @@ CFLAGS += -I $(SELF_DIR)
 CFLAGS += -std=gnu99
 CFLAGS += -DCAPACITY_POW2
 #CFLAGS += -O3
-#CFLAGS += -O0 -g -rdynamic -DENABLE_LOG -Wfatal-errors
-CFLAGS += -O0 -g
+CFLAGS += -O0 -g -rdynamic -DENABLE_LOG -Wfatal-errors
+#CFLAGS += -O0 -g
 
 # It seems the DPDK makefiles really don't like being recursively invoked -
 # and benchmarking invokes make run;

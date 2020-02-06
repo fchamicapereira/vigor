@@ -15,8 +15,20 @@
 #  include <klee/klee.h>
 #endif
 
-void *chunks_borrowed[MAX_N_CHUNKS];
-size_t chunks_borrowed_num = 0;
+void ***chunks_borrowed;
+size_t *chunks_borrowed_num;
+
+void nf_util_init() {
+  unsigned lcores = rte_lcore_count();
+
+  chunks_borrowed_num = (size_t*) malloc(sizeof(size_t) * lcores); 
+  chunks_borrowed = (void ***) malloc(sizeof(void **) * lcores);
+  
+  for (unsigned lcore_id = 0; lcore_id < lcores; lcore_id++) {
+    chunks_borrowed_num[lcore_id] = 0;
+    chunks_borrowed[lcore_id] = (void**) malloc(sizeof(void*) * MAX_N_CHUNKS);
+  }
+}
 
 bool nf_has_ipv4_header(struct ether_hdr *header) {
   return header->ether_type == rte_be_to_cpu_16(ETHER_TYPE_IPv4);
