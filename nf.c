@@ -117,6 +117,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 
   // RSS configuration (symmetric RSS using hash function defined above)
   device_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+
   struct rte_eth_rss_conf rss_conf;
   rss_conf.rss_key = hash_key;
   rss_conf.rss_key_len = RSS_HASH_KEY_LENGTH;
@@ -163,6 +164,12 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
     return retval;
   }
 
+  struct rte_eth_dev_info dev_info;
+  rte_eth_dev_info_get(device, &dev_info);
+
+  NF_DEBUG("driver name %s", dev_info.driver_name);
+  NF_DEBUG("flow_type_rss_offloads %lu", dev_info.flow_type_rss_offloads);
+
   return 0;
 }
 
@@ -185,8 +192,9 @@ static void lcore_main(void) {
 
   VIGOR_LOOP_BEGIN
     struct rte_mbuf *mbuf;
-    if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {
+    if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {        
       uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
+      NF_DEBUG("[%d] hash %u", rte_lcore_id(), mbuf->hash.rss);
 
       uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
       nf_return_all_chunks(packet);
