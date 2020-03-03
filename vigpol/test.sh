@@ -49,10 +49,10 @@ function test_policer {
   sudo ip netns exec lan arp -i test_lan -s 10.0.0.2 $WAN_MAC
   sudo ip netns exec wan arp -i test_wan -s 10.0.0.1 $LAN_MAC
 
-  sudo ip netns exec lan iperf -us -i 1 &
+  sudo ip netns exec lan iperf -us -i 1 >iperf.server.output &
   SERVER_PID=$!
 
-  sudo ip netns exec wan iperf -uc 10.0.0.1 -t 10 >/dev/null
+  sudo ip netns exec wan iperf -uc 10.0.0.1 -t 10 >iperf.client.output #>/dev/null
 
   sudo killall iperf
   wait $SERVER_PID 2>/dev/null || true
@@ -68,6 +68,6 @@ function test_policer {
 make clean
 make ADDITIONAL_FLAGS="-DSTOP_ON_RX_0 -g"
 
-test_policer 12500 500000
-
+#test_policer 12500 500000
+test_policer 1500 500000
 echo "Done."
