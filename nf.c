@@ -9,6 +9,7 @@
 #include <rte_ethdev.h>
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
+#include <rte_flow.h>
 
 #include "libvig/verified/boilerplate-util.h"
 #include "libvig/verified/packet-io.h"
@@ -164,11 +165,95 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
     return retval;
   }
 
-  struct rte_eth_dev_info dev_info;
-  rte_eth_dev_info_get(device, &dev_info);
+  // create RSS flow
+  // struct rte_flow_attr attr;
+  // struct rte_flow_item pattern[4];
+  // struct rte_flow_action actions[4];
 
-  NF_DEBUG("driver name %s", dev_info.driver_name);
-  NF_DEBUG("flow_type_rss_offloads %lu", dev_info.flow_type_rss_offloads);
+  // struct rte_flow_item_eth eth_spec;
+  // struct rte_flow_item_eth eth_mask;
+  // struct rte_flow_item_vlan vlan_spec;
+  // struct rte_flow_item_vlan vlan_mask;
+  // struct rte_flow_item_ipv4 ip_spec;
+  // struct rte_flow_item_ipv4 ip_mask;
+
+  // uint16_t queues[4];
+  // struct rte_flow_action_rss rss;
+
+  // struct rte_flow *flow;
+  // struct rte_flow_error error;
+
+  // /* setting flow pattern */
+  // memset(pattern, 0, sizeof(pattern));
+  // memset(actions, 0, sizeof(actions));
+
+  // /*
+  //  * set the rule attribute.
+  //  * in this case only ingress packets will be checked.
+  //  */
+  // memset(&attr, 0, sizeof(struct rte_flow_attr));
+  // attr.ingress = 1;
+
+  // /*
+  //  * set the first level of the pattern (eth).
+  //  * since in this example we just want to get the
+  //  * ipv4 we set this level to allow all.
+  //  */
+  // memset(&eth_spec, 0, sizeof(struct rte_flow_item_eth));
+  // memset(&eth_mask, 0, sizeof(struct rte_flow_item_eth));
+  // eth_spec.type = 0;
+  // eth_mask.type = 0;
+  // pattern[0].type = RTE_FLOW_ITEM_TYPE_ETH;
+  // pattern[0].spec = &eth_spec;
+  // pattern[0].mask = &eth_mask;
+
+  // /*
+  //  * setting the second level of the pattern (vlan).
+  //  * since in this example we just want to get the
+  //  * ipv4 we also set this level to allow all.
+  //  */
+  // memset(&vlan_spec, 0, sizeof(struct rte_flow_item_vlan));
+  // memset(&vlan_mask, 0, sizeof(struct rte_flow_item_vlan));
+  // pattern[1].type = RTE_FLOW_ITEM_TYPE_VLAN;
+  // pattern[1].spec = &vlan_spec;
+  // pattern[1].mask = &vlan_mask;
+
+  // /*
+  //  * setting the third level of the pattern (ip).
+  //  * in this example this is the level we care about
+  //  * so we set it according to the parameters.
+  //  */
+  // memset(&ip_spec, 0, sizeof(struct rte_flow_item_ipv4));
+  // memset(&ip_mask, 0, sizeof(struct rte_flow_item_ipv4));
+  // pattern[2].type = RTE_FLOW_ITEM_TYPE_IPV4;
+  // pattern[2].spec = &ip_spec;
+  // pattern[2].mask = &ip_mask;
+
+  // pattern[3].type = RTE_FLOW_ITEM_TYPE_END;
+
+  // /* create the drop action */
+  // // rss.types = ETH_RSS_NONFRAG_IPV4_TCP;
+  // // rss.level = 0;
+  // // rss.func = RTE_ETH_HASH_FUNCTION_SIMPLE_XOR;
+
+  // actions[0].type = RTE_FLOW_ACTION_TYPE_DROP;
+  // actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+
+  // /* validate and create the flow rule */
+  
+  // if (!rte_flow_validate(device, &attr, pattern, actions, &error))
+  //     flow = rte_flow_create(device, &attr, pattern, actions, &error);
+  // else {
+  //   rte_exit(EXIT_FAILURE, "Flow can't be created %d message: %s\n",
+  //                   error.type,
+  //                   error.message ? error.message : "(no stated reason)");
+  // }
+
+  // struct rte_eth_dev_info dev_info;
+  // rte_eth_dev_info_get(device, &dev_info);
+  
+  // NF_DEBUG("driver name %s", dev_info.driver_name);
+  // NF_DEBUG("flow_type_rss_offloads %lu", dev_info.flow_type_rss_offloads);
 
   return 0;
 }
