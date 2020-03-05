@@ -49,6 +49,7 @@ NF_DEFS += -DNF_ARGUMENTS="\"$(subst $(space),$(dquote)$(comma)$(dquote),nf $(NF
 
 NF_COMMON_SOURCES := $(SELF_DIR)/nf.c \
 	$(SELF_DIR)/nf-util.c \
+	$(SELF_DIR)/nf-rss-dev.c \
 	$(CONTAINERS_DIR)/vigor-time.c \
 	$(CONTAINERS_DIR)/packet-io.c \
 	$(wildcard $(RTE_SDK)/lib/librte_cmdline/*.c) \
