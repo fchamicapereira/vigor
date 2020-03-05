@@ -259,11 +259,11 @@ int MAIN(int argc, char *argv[]) {
   // rte_eal_mp_remote_launch((lcore_function_t *)lcore_main, NULL, CALL_MASTER);
 
   RTE_LCORE_FOREACH_SLAVE(lcore_id) {
-    rte_eal_remote_launch(lcore_main, NULL, lcore_id);
+    rte_eal_remote_launch((lcore_function_t *)lcore_main, NULL, lcore_id);
   }
 
   /* call it on master lcore too */
-  lcore_main(NULL);
+  lcore_main();
 
   return 0;
 }
