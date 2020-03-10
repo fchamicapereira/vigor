@@ -121,9 +121,9 @@ bool nf_init(void) {
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
-  NF_DEBUG("Received packet");
+  NF_DEBUG("Received packet %p", buffer);
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
-
+  NF_DEBUG("Didnt crash here");
   uint8_t *ip_options;
   struct ipv4_hdr *ipv4_header =
       nf_then_get_ipv4_header(ether_header, buffer, &ip_options);

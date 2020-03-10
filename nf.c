@@ -163,11 +163,13 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   NF_DEBUG("driver name %s", dev_info.driver_name);
   NF_DEBUG("flow_type_rss_offloads %lu", dev_info.flow_type_rss_offloads);
   NF_DEBUG("device number %d", rte_eth_dev_count());
+
   return 0;
 }
 
 // --- Per-core work ---
 
+/*
 static void lcore_main(void) {
   for (uint16_t device = 0; device < rte_eth_dev_count(); device++) {
     if (rte_eth_dev_socket_id(device) > 0 &&
@@ -200,6 +202,60 @@ static void lcore_main(void) {
       } else {
         concretize_devices(&dst_device, rte_eth_dev_count());
         nf_send_packet(mbuf, dst_device);
+      }
+    }
+  VIGOR_LOOP_END
+}
+*/
+
+static void lcore_main(void) {
+  unsigned int lcore_id = rte_lcore_id();
+
+  for (uint16_t device = 0; device < rte_eth_dev_count(); device++) {
+    if (rte_eth_dev_socket_id(device) > 0 &&
+        rte_eth_dev_socket_id(device) != (int)rte_socket_id()) {
+      NF_INFO("Device %" PRIu8 " is on remote NUMA node to polling thread.",
+              device);
+    }
+  }
+
+  if (!nf_init()) {
+    rte_exit(EXIT_FAILURE, "Error initializing NF");
+  }
+
+  VIGOR_LOOP_BEGIN
+
+    // master
+    if (lcore_id == 0) {
+      struct rte_mbuf *mbuf;
+      if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {        
+        uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
+        lcore_distributor_process(mbuf, mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
+
+        nf_return_all_chunks(packet);
+      }
+    }
+    
+    // slave
+    else {
+      struct lcm* msg = lcore_slave_process();
+
+      if (msg != NULL) {
+        NF_DEBUG("is msg nil here? %p\n", msg);
+        print_message(msg);
+        uint16_t dst_device = nf_process(msg->device, msg->packet, msg->packet_length, msg->now);
+        nf_return_all_chunks(msg->packet);
+
+        if (dst_device == VIGOR_DEVICE) {
+          nf_free_packet(msg->mbuf);
+        } else if (dst_device == FLOOD_FRAME) {
+          flood(msg->mbuf, VIGOR_DEVICE, VIGOR_DEVICES_COUNT);
+        } else {
+          concretize_devices(&(dst_device), rte_eth_dev_count());
+          nf_send_packet(msg->mbuf, dst_device);
+        }
+
+        free(msg);
       }
     }
   VIGOR_LOOP_END
@@ -245,6 +301,8 @@ int MAIN(int argc, char *argv[]) {
                ret);
     }
   }
+
+  virtual_rss_init();
 
   nf_util_init();
 
