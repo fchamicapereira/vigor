@@ -71,6 +71,12 @@ static inline struct lcm* build_message(
   struct rte_mbuf *mbuf, uint16_t device, uint8_t* packet,
   uint16_t packet_length, vigor_time_t now) {
 
+  NF_DEBUG("**** BUILDING MESSAGE ****");
+  NF_DEBUG("mbug %p", mbuf);
+  NF_DEBUG("device %d", device);
+  NF_DEBUG("packet %p", packet);
+  NF_DEBUG("packet length %d", packet_length);
+
   struct lcm *msg = (struct lcm*) rte_malloc(NULL, sizeof(struct lcm), 0);
 
   if (!msg) {
@@ -89,22 +95,23 @@ static inline struct lcm* build_message(
   msg->packet_length = packet_length;
   msg->now = now;
 
+  NF_DEBUG("**** BUILT MESSAGE ****");
+  NF_DEBUG("mbug %p", msg->mbuf);
+  NF_DEBUG("device %d", msg->device);
+  NF_DEBUG("packet %p", msg->packet);
+  NF_DEBUG("packet length %d", msg->packet_length);
+  NF_DEBUG("now %ld", msg->now);
+
   return msg;
 }
 
 static struct lcore_ring *rings;
-static struct rte_mempool *message_pool;
 
 static inline void virtual_rss_init(void) {
   unsigned int lcores = rte_lcore_count();
   unsigned int lcore;
 
   rings = (struct lcore_ring*) malloc(sizeof(struct lcore_ring) * lcores);
-
-  message_pool = rte_mempool_create(_MSG_POOL, POOL_SIZE,
-    STR_TOKEN_SIZE, POOL_CACHE, PRIV_DATA_SIZE,
-    NULL, NULL, NULL, NULL,
-    rte_socket_id(), FLAGS);
 
   for (unsigned int lcore = 0; lcore < lcores; lcore++) {
     snprintf(rings[lcore].name, RING_NAME_SIZE, "RING_%d", lcore);
@@ -135,7 +142,6 @@ static inline struct lcm* lcore_slave_process(void) {
     return NULL;
 
   NF_DEBUG("[SLAVE] %d <- MASTER", lcore_id);
-  NF_DEBUG("MESSAGE:");
   print_message(msg);
 
   return (struct lcm*)msg;

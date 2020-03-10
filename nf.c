@@ -231,7 +231,7 @@ static void lcore_main(void) {
       if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {        
         uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
         lcore_distributor_process(mbuf, mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
-
+        NF_DEBUG("[MASTER] return_all_chunks %p", packet);
         nf_return_all_chunks(packet);
       }
     }
@@ -244,7 +244,7 @@ static void lcore_main(void) {
         NF_DEBUG("is msg nil here? %p\n", msg);
         print_message(msg);
         uint16_t dst_device = nf_process(msg->device, msg->packet, msg->packet_length, msg->now);
-        nf_return_all_chunks(msg->packet);
+        //free(msg->packet);
 
         if (dst_device == VIGOR_DEVICE) {
           nf_free_packet(msg->mbuf);
@@ -255,9 +255,10 @@ static void lcore_main(void) {
           nf_send_packet(msg->mbuf, dst_device);
         }
 
-        free(msg);
+        //free(msg);
       }
     }
+
   VIGOR_LOOP_END
 }
 
@@ -303,7 +304,6 @@ int MAIN(int argc, char *argv[]) {
   }
 
   virtual_rss_init();
-
   nf_util_init();
 
   // Run!
