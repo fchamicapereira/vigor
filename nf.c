@@ -72,8 +72,8 @@
 #endif // KLEE_VERIFICATION
 
 // Number of RX/TX queues
-static const uint16_t RX_QUEUES_COUNT = 10;
-static const uint16_t TX_QUEUES_COUNT = 10;
+static const uint16_t RX_QUEUES_COUNT = 1;
+static const uint16_t TX_QUEUES_COUNT = 1;
 
 // Queue sizes for receiving/transmitting packets
 // NOT powers of 2 so that ixgbe doesn't use vector stuff
