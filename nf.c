@@ -72,8 +72,8 @@
 #endif // KLEE_VERIFICATION
 
 // Number of RX/TX queues
-static const uint16_t RX_QUEUES_COUNT = 1;
-static const uint16_t TX_QUEUES_COUNT = 1;
+static const uint16_t RX_QUEUES_COUNT = 10;
+static const uint16_t TX_QUEUES_COUNT = 10;
 
 // Queue sizes for receiving/transmitting packets
 // NOT powers of 2 so that ixgbe doesn't use vector stuff
@@ -165,48 +165,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 
 // --- Per-core work ---
 
-/*
 static void lcore_main(void) {
-  for (uint16_t device = 0; device < rte_eth_dev_count(); device++) {
-    if (rte_eth_dev_socket_id(device) > 0 &&
-        rte_eth_dev_socket_id(device) != (int)rte_socket_id()) {
-      NF_INFO("Device %" PRIu8 " is on remote NUMA node to polling thread.",
-              device);
-    }
-  }
-
-  if (!nf_init()) {
-    rte_exit(EXIT_FAILURE, "Error initializing NF");
-  }
-
-  NF_INFO("Core %u forwarding packets.", rte_lcore_id());
-
-  VIGOR_LOOP_BEGIN
-    struct rte_mbuf *mbuf;
-    if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {        
-      uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
-
-      NF_DEBUG("[%d] hash %u", rte_lcore_id(), mbuf->hash.rss);
-
-      uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
-      nf_return_all_chunks(packet);
-
-      if (dst_device == VIGOR_DEVICE) {
-        nf_free_packet(mbuf);
-      } else if (dst_device == FLOOD_FRAME) {
-        flood(mbuf, VIGOR_DEVICE, VIGOR_DEVICES_COUNT);
-      } else {
-        concretize_devices(&dst_device, rte_eth_dev_count());
-        nf_send_packet(mbuf, dst_device);
-      }
-    }
-  VIGOR_LOOP_END
-}
-*/
-
-static void lcore_main(void) {
-  unsigned int lcore_id = rte_lcore_id();
-
   for (uint16_t device = 0; device < rte_eth_dev_count(); device++) {
     if (rte_eth_dev_socket_id(device) > 0 &&
         rte_eth_dev_socket_id(device) != (int)rte_socket_id()) {
