@@ -159,10 +159,6 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   if (rte_eth_promiscuous_get(device) != 1) {
     return retval;
   }
-  
-  NF_DEBUG("driver name %s", dev_info.driver_name);
-  NF_DEBUG("flow_type_rss_offloads %lu", dev_info.flow_type_rss_offloads);
-  NF_DEBUG("device number %d", rte_eth_dev_count());
 
   return 0;
 }
@@ -223,42 +219,25 @@ static void lcore_main(void) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
 
+  NF_INFO("Core %u forwarding packets.", rte_lcore_id());
+
   VIGOR_LOOP_BEGIN
+    struct rte_mbuf *mbuf;
+    if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {
+      NF_INFO("Core %u received packet with hash: 0x%x", mbuf->hash.rss);
+      uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
+      uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
+      nf_return_all_chunks(packet);
 
-    // master
-    if (lcore_id == 0) {
-      struct rte_mbuf *mbuf;
-      if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {        
-        uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
-        lcore_distributor_process(mbuf, mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
-        NF_DEBUG("[MASTER] return_all_chunks %p", packet);
-        nf_return_all_chunks(packet);
+      if (dst_device == VIGOR_DEVICE) {
+        nf_free_packet(mbuf);
+      } else if (dst_device == FLOOD_FRAME) {
+        flood(mbuf, VIGOR_DEVICE, VIGOR_DEVICES_COUNT);
+      } else {
+        concretize_devices(&dst_device, rte_eth_dev_count());
+        nf_send_packet(mbuf, dst_device);
       }
     }
-    
-    // slave
-    else {
-      struct lcm* msg = lcore_slave_process();
-
-      if (msg != NULL) {
-        NF_DEBUG("is msg nil here? %p\n", msg);
-        print_message(msg);
-        uint16_t dst_device = nf_process(msg->device, msg->packet, msg->packet_length, msg->now);
-        //free(msg->packet);
-
-        if (dst_device == VIGOR_DEVICE) {
-          nf_free_packet(msg->mbuf);
-        } else if (dst_device == FLOOD_FRAME) {
-          flood(msg->mbuf, VIGOR_DEVICE, VIGOR_DEVICES_COUNT);
-        } else {
-          concretize_devices(&(dst_device), rte_eth_dev_count());
-          nf_send_packet(msg->mbuf, dst_device);
-        }
-
-        //free(msg);
-      }
-    }
-
   VIGOR_LOOP_END
 }
 
@@ -303,7 +282,6 @@ int MAIN(int argc, char *argv[]) {
     }
   }
 
-  virtual_rss_init();
   nf_util_init();
 
   // Run!
