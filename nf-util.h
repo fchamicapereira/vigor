@@ -164,8 +164,9 @@ nf_then_get_tcpudp_header(struct ipv4_hdr *ip_header, void *p) {
 }
 
 static inline bool nf_receive_packet(uint16_t src_device,
+                                     uint16_t queue_id,
                                      struct rte_mbuf **mbuf) {
-  uint16_t actual_rx_len = rte_eth_rx_burst(src_device, 0, mbuf, 1);
+  uint16_t actual_rx_len = rte_eth_rx_burst(src_device, queue_id, mbuf, 1);
   if (actual_rx_len != 0) {
     // TODO: for multi-mbuf packets, make sure to differentiate
     // between pkt_len and data_len

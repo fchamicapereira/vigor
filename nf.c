@@ -14,7 +14,7 @@
 #include "libvig/verified/packet-io.h"
 #include "nf-log.h"
 #include "nf-util.h"
-#include "nf-rss-dev.h"
+#include "nf-rss.h"
 #include "nf.h"
 
 #ifdef KLEE_VERIFICATION
@@ -96,56 +96,67 @@ void flood(struct rte_mbuf *frame, uint16_t skip_device, uint16_t nb_devices) {
 }
 
 // Buffer count for mempools
-static const unsigned MEMPOOL_BUFFER_COUNT = 256;
+//static const unsigned MEMPOOL_BUFFER_COUNT = 256;
+static const unsigned MEMPOOL_BUFFER_COUNT = 1024 * 64;
 
 // --- Initialization ---
-static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
+static int nf_init_device(uint16_t device, struct rte_mempool* mbuf_pool) {
   int retval;
+  const uint16_t num_queues = rte_lcore_count();
 
   // device_conf passed to rte_eth_dev_configure cannot be NULL
   struct rte_eth_conf device_conf;
   memset(&device_conf, 0, sizeof(struct rte_eth_conf));
-  device_conf.rxmode.hw_strip_crc = 1;
-
-  // RSS configuration (symmetric RSS using hash function defined above)
-  device_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
 
   struct rte_eth_rss_conf rss_conf;
   rss_conf.rss_key = hash_key;
   rss_conf.rss_key_len = RSS_HASH_KEY_LENGTH;
   rss_conf.rss_hf = ETH_RSS_IP;
 
+  device_conf.rxmode.hw_strip_crc = 1;
+  device_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
   device_conf.rx_adv_conf.rss_conf = rss_conf;
 
+  struct rte_eth_dev_info dev_info;
+  rte_eth_dev_info_get(device, &dev_info);
+
   // Configure the device
-  retval = rte_eth_dev_configure(device, RX_QUEUES_COUNT, TX_QUEUES_COUNT,
+  retval = rte_eth_dev_configure(device, num_queues, num_queues,
                                  &device_conf);
   if (retval != 0) {
     return retval;
   }
 
+  uint16_t nb_rxd = RX_QUEUE_SIZE;
+  uint16_t nb_txd = TX_QUEUE_SIZE;
+
+  retval = rte_eth_dev_adjust_nb_rx_tx_desc(device, &nb_rxd, &nb_txd);
+  if (retval < 0)
+    return retval;
+
   // Allocate and set up TX queues
-  for (int txq = 0; txq < TX_QUEUES_COUNT; txq++) {
-    retval = rte_eth_tx_queue_setup(device, txq, TX_QUEUE_SIZE,
+  for (int txq = 0; txq < num_queues; txq++) {
+    retval = rte_eth_tx_queue_setup(device, txq, nb_txd,
                                     rte_eth_dev_socket_id(device), NULL);
     if (retval != 0) {
       return retval;
     }
   }
 
-  struct rte_eth_dev_info dev_info;
-
-  rte_eth_dev_info_get(device, &dev_info);
-
-  // Allocate and set up RX queues
-  for (int rxq = 0; rxq < RX_QUEUES_COUNT; rxq++) {
-    retval = rte_eth_rx_queue_setup(device, rxq, RX_QUEUE_SIZE,
+  unsigned lcore_id;
+  int rxq = 0;
+  RTE_LCORE_FOREACH(lcore_id) {
+    // Allocate and set up RX queues
+    lcores_conf[lcore_id].queue_id = rxq;
+    retval = rte_eth_rx_queue_setup(device, rxq, nb_rxd,
                                     rte_eth_dev_socket_id(device),
                                     NULL,
                                     mbuf_pool);
     if (retval != 0) {
       return retval;
     }
+
+    rxq++;
   }
 
   // Start the device
@@ -166,6 +177,9 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 // --- Per-core work ---
 
 static void lcore_main(void) {
+  const unsigned lcore_id = rte_lcore_id();
+  const uint16_t queue_id = lcores_conf[lcore_id].queue_id;
+
   for (uint16_t device = 0; device < rte_eth_dev_count(); device++) {
     if (rte_eth_dev_socket_id(device) > 0 &&
         rte_eth_dev_socket_id(device) != (int)rte_socket_id()) {
@@ -178,12 +192,12 @@ static void lcore_main(void) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
 
-  NF_INFO("Core %u forwarding packets.", rte_lcore_id());
+  NF_INFO("Core %u using queue %u forwarding packets.", lcore_id, (unsigned)queue_id);
 
   VIGOR_LOOP_BEGIN
     struct rte_mbuf *mbuf;
-    if (nf_receive_packet(VIGOR_DEVICE, &mbuf)) {
-      NF_INFO("Core %u received packet with hash: 0x%x", mbuf->hash.rss);
+    if (nf_receive_packet(VIGOR_DEVICE, queue_id, &mbuf)) {
+      NF_INFO("Core %u received packet with hash: 0x%08x", lcore_id, mbuf->hash.rss);
       uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
       uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
       nf_return_all_chunks(packet);
@@ -217,14 +231,18 @@ int MAIN(int argc, char *argv[]) {
 
   // Create a memory pool
   unsigned nb_devices = rte_eth_dev_count();
-  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create(
-      "MEMPOOL",                         // name
-      MEMPOOL_BUFFER_COUNT * nb_devices, // #elements
-      0, // cache size (per-lcore, not useful in a single-threaded app)
+
+  char MBUF_POOL_NAME[15];
+  struct rte_mempool *mbuf_pool;
+  mbuf_pool = rte_pktmbuf_pool_create(
+      "MEMORY_POOL", // name
+      MEMPOOL_BUFFER_COUNT * nb_devices * rte_lcore_count(), // #elements
+      MBUF_CACHE_SIZE, // cache size (per-lcore)
       0, // application private area size
       RTE_MBUF_DEFAULT_BUF_SIZE, // data buffer size
       rte_socket_id()            // socket ID
   );
+
   if (mbuf_pool == NULL) {
     rte_exit(EXIT_FAILURE, "Cannot create mbuf pool: %s\n",
              rte_strerror(rte_errno));
@@ -248,11 +266,8 @@ int MAIN(int argc, char *argv[]) {
   
   // ... UNTIL NOW
 
-  unsigned lcore_id;
-
   // call on each lcore
-  // rte_eal_mp_remote_launch((lcore_function_t *)lcore_main, NULL, CALL_MASTER);
-
+  unsigned lcore_id;
   RTE_LCORE_FOREACH_SLAVE(lcore_id) {
     rte_eal_remote_launch((lcore_function_t *)lcore_main, NULL, lcore_id);
   }
