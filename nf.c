@@ -194,11 +194,7 @@ static void lcore_main(void) {
     struct rte_mbuf *mbuf;
     if (nf_receive_packet(VIGOR_DEVICE, queue_id, &mbuf)) {
       uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
-      NF_INFO("Core %u received packet %p (mbuf %p buf_addr %p) with hash 0x%08x on port %u",
-              lcore_id,
-              packet, mbuf, mbuf->buf_addr,
-              mbuf->hash.rss,
-              (unsigned)mbuf->port);
+      NF_DEBUG("Core %u hash 0x%08x", lcore_id, mbuf->hash.rss);
       uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
       nf_return_all_chunks(packet);
 
