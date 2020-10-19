@@ -82,13 +82,13 @@ static const uint16_t TX_QUEUES_COUNT = 1;
 static const uint16_t RX_QUEUE_SIZE = 96;
 static const uint16_t TX_QUEUE_SIZE = 96;
 
-void flood(struct rte_mbuf *frame, uint16_t skip_device, uint16_t nb_devices) {
+void flood(struct rte_mbuf *frame, uint16_t skip_device, uint16_t nb_devices, uint16_t queue_id) {
   rte_mbuf_refcnt_set(frame, nb_devices - 1);
   int total_sent = 0;
   for (uint16_t device = 0; device < nb_devices; device++) {
     if (device == skip_device)
       continue;
-    total_sent += rte_eth_tx_burst(device, 0, &frame, 1);
+    total_sent += rte_eth_tx_burst(device, queue_id, &frame, 1);
   }
   if (total_sent != nb_devices - 1) {
     rte_pktmbuf_free(frame);
@@ -96,8 +96,7 @@ void flood(struct rte_mbuf *frame, uint16_t skip_device, uint16_t nb_devices) {
 }
 
 // Buffer count for mempools
-//static const unsigned MEMPOOL_BUFFER_COUNT = 256;
-static const unsigned MEMPOOL_BUFFER_COUNT = 1024 * 64;
+static const unsigned MEMPOOL_BUFFER_COUNT = 256;
 
 // --- Initialization ---
 static int nf_init_device(uint16_t device, struct rte_mempool* mbuf_pool) {
@@ -111,14 +110,11 @@ static int nf_init_device(uint16_t device, struct rte_mempool* mbuf_pool) {
   struct rte_eth_rss_conf rss_conf;
   rss_conf.rss_key = hash_key;
   rss_conf.rss_key_len = RSS_HASH_KEY_LENGTH;
-  rss_conf.rss_hf = ETH_RSS_IP;
+  rss_conf.rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP;
 
   device_conf.rxmode.hw_strip_crc = 1;
   device_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
   device_conf.rx_adv_conf.rss_conf = rss_conf;
-
-  struct rte_eth_dev_info dev_info;
-  rte_eth_dev_info_get(device, &dev_info);
 
   // Configure the device
   retval = rte_eth_dev_configure(device, num_queues, num_queues,
@@ -197,18 +193,22 @@ static void lcore_main(void) {
   VIGOR_LOOP_BEGIN
     struct rte_mbuf *mbuf;
     if (nf_receive_packet(VIGOR_DEVICE, queue_id, &mbuf)) {
-      NF_INFO("Core %u received packet with hash: 0x%08x", lcore_id, mbuf->hash.rss);
       uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
+      NF_INFO("Core %u received packet %p (mbuf %p buf_addr %p) with hash 0x%08x on port %u",
+              lcore_id,
+              packet, mbuf, mbuf->buf_addr,
+              mbuf->hash.rss,
+              (unsigned)mbuf->port);
       uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
       nf_return_all_chunks(packet);
 
       if (dst_device == VIGOR_DEVICE) {
         nf_free_packet(mbuf);
       } else if (dst_device == FLOOD_FRAME) {
-        flood(mbuf, VIGOR_DEVICE, VIGOR_DEVICES_COUNT);
+        flood(mbuf, VIGOR_DEVICE, VIGOR_DEVICES_COUNT, queue_id);
       } else {
         concretize_devices(&dst_device, rte_eth_dev_count());
-        nf_send_packet(mbuf, dst_device);
+        nf_send_packet(mbuf, dst_device, queue_id);
       }
     }
   VIGOR_LOOP_END
@@ -260,6 +260,7 @@ int MAIN(int argc, char *argv[]) {
   }
 
   nf_util_init();
+  packet_io_init();
 
   // Run!
   // ...in single-threaded mode, that is.

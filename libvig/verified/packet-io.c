@@ -5,8 +5,14 @@
 
 #include "packet-io.h"
 
-size_t global_total_length;
-size_t global_read_length = 0;
+size_t global_total_length[RTE_MAX_LCORE];
+size_t global_read_length[RTE_MAX_LCORE];
+
+void packet_io_init() {
+  for (int i = 0; i < RTE_MAX_LCORE; i++) {
+    global_read_length[i] = 0;
+  }
+}
 
 /*@
   fixpoint bool missing_chunks(list<pair<int8_t*, int> > missing_chunks, int8_t*
@@ -37,7 +43,7 @@ size_t global_read_length = 0;
     chars((int8_t*)p + borrowed_len(missing_chunks), length(unread), unread);
   @*/
 
-void packet_state_total_length(void *p, uint32_t *len)
+void packet_state_total_length(void *p, uint32_t *len, unsigned lcore_id)
 /*@ requires packetp(p, ?unread, nil) &*&
              *len |-> length(unread); @*/
 /*@ ensures packetp(p, unread, nil) &*&
@@ -45,7 +51,7 @@ void packet_state_total_length(void *p, uint32_t *len)
 {
   //@ open packetp(p, unread, nil);
   // IGNORE(p);
-  global_total_length = *len;
+  global_total_length[lcore_id] = *len;
   //@ close packetp(p, unread, nil);
 }
 
@@ -66,7 +72,7 @@ void packet_state_total_length(void *p, uint32_t *len)
 @*/
 
 // The main IO primitive.
-void packet_borrow_next_chunk(void *p, size_t length, void **chunk)
+void packet_borrow_next_chunk(void *p, size_t length, void **chunk, unsigned lcore_id)
 /*@ requires packetp(p, ?unread, ?mc) &*&
              length <= length(unread) &*&
              0 < length &*& length < INT_MAX &*&
@@ -83,29 +89,29 @@ void packet_borrow_next_chunk(void *p, size_t length, void **chunk)
   //@ assert p > 0;
   //@ assert p + global_read_length > 0;
   // TODO: support mbuf chains.
-  *chunk = (char *)p + global_read_length;
+  *chunk = (char *)p + global_read_length[lcore_id];
   //@ chars_split(*chunk, length);
-  global_read_length += length;
+  global_read_length[lcore_id] += length;
   //@ assert *chunk |-> ?ptr;
   //@ close packetp(p, drop(length, unread), cons(pair(ptr, length), mc));
 }
 
-void packet_return_chunk(void *p, void *chunk)
+void packet_return_chunk(void *p, void *chunk, unsigned lcore_id)
 /*@ requires packetp(p, ?unread, cons(pair(chunk, ?len), ?mc)) &*&
              chars(chunk, len, ?chnk); @*/
 /*@ ensures packetp(p, append(chnk, unread), mc); @*/
 {
   //@ open packetp(p, unread, cons(pair(chunk, len), mc));
-  global_read_length = (uint32_t)((int8_t *)chunk - (int8_t *)p);
+  global_read_length[lcore_id] = (uint32_t)((int8_t *)chunk - (int8_t *)p);
   //@ close packetp(p, append(chnk, unread), mc);
 }
 
-uint32_t packet_get_unread_length(void *p)
+uint32_t packet_get_unread_length(void *p, unsigned lcore_id)
 /*@ requires packetp(p, ?unread, ?mc); @*/
 /*@ ensures packetp(p, unread, mc) &*&
             result == length(unread); @*/
 {
   //@ open packetp(p, unread, mc);
-  return global_total_length - global_read_length;
+  return global_total_length[lcore_id] - global_read_length[lcore_id];
   //@ close packetp(p, unread, mc);
 }

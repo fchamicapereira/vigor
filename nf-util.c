@@ -15,16 +15,11 @@
 #  include <klee/klee.h>
 #endif
 
-void ***chunks_borrowed;
-size_t *chunks_borrowed_num;
+void **chunks_borrowed[RTE_MAX_LCORE];
+size_t chunks_borrowed_num[RTE_MAX_LCORE];
 
 void nf_util_init() {
-  unsigned lcores = rte_lcore_count();
-
-  chunks_borrowed_num = (size_t*) malloc(sizeof(size_t) * lcores); 
-  chunks_borrowed = (void ***) malloc(sizeof(void **) * lcores);
-  
-  for (unsigned lcore_id = 0; lcore_id < lcores; lcore_id++) {
+  for (unsigned lcore_id = 0; lcore_id < RTE_MAX_LCORE; lcore_id++) {
     chunks_borrowed_num[lcore_id] = 0;
     chunks_borrowed[lcore_id] = (void**) malloc(sizeof(void*) * MAX_N_CHUNKS);
   }
