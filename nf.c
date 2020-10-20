@@ -113,9 +113,18 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
     return retval;
   }
 
+  uint16_t nb_rxd = 128;
+  uint16_t nb_txd = 128;
+
+  retval = rte_eth_dev_adjust_nb_rx_tx_desc(device, &nb_rxd, &nb_txd);
+
+  if (retval != 0) {
+    return retval;
+  }
+
   // Allocate and set up TX queues
   for (int txq = 0; txq < TX_QUEUES_COUNT; txq++) {
-    retval = rte_eth_tx_queue_setup(device, txq, TX_QUEUE_SIZE,
+    retval = rte_eth_tx_queue_setup(device, txq, nb_txd,
                                     rte_eth_dev_socket_id(device), NULL);
     if (retval != 0) {
       return retval;
@@ -124,7 +133,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 
   // Allocate and set up RX queues
   for (int rxq = 0; rxq < RX_QUEUES_COUNT; rxq++) {
-    retval = rte_eth_rx_queue_setup(device, rxq, RX_QUEUE_SIZE,
+    retval = rte_eth_rx_queue_setup(device, rxq, nb_rxd,
                                     rte_eth_dev_socket_id(device),
                                     NULL, // default config
                                     mbuf_pool);

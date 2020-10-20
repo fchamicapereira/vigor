@@ -14,13 +14,12 @@ local stats   = require "stats"
 local timer   = require "timer"
 local ts      = require "timestamping"
 
-
 local BATCH_SIZE = 64 -- packets
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
 
 local HEATUP_DURATION = 5 -- seconds
-local HEATUP_RATE     = 20 -- Mbps
+local HEATUP_RATE     = 50 -- Mbps
 
 local LATENCY_LOAD_RATE = 1000 -- Mbps
 local N_PROBE_FLOWS     = 1000
@@ -110,6 +109,7 @@ function _throughputTask(txQueue, rxQueue, layer, packetSize, flowCount, duratio
   -- "nil" == no output
   local txCounter = stats:newDevTxCounter(txQueue, "nil")
   local rxCounter = stats:newDevRxCounter(rxQueue, "nil")
+
   local bufs = mempool:bufArray(BATCH_SIZE)
   local packetConfig = packetConfigs[layer]
   local sendTimer = timer:new(duration)
@@ -261,18 +261,21 @@ function measureMaxThroughputWithLowLoss(txDev, rxDev, layer, packetSize,
   local outFile = io.open(RESULTS_FILE_NAME, "w")
   outFile:write("#flows\tMbps\t#packets\t#pkts/s\tloss\n")
 
+  local totalRxCounter = 0
+  local totalTxCounter = 0
+
   local txQueue = txDev:getTxQueue(0)
   local rxQueue = rxDev:getRxQueue(0)
   local txReverseQueue = rxDev:getTxQueue(0) -- the rx/tx inversion is voluntary
   local rxReverseQueue = txDev:getRxQueue(0)
 
   for _, flowCount in ipairs({60000}) do
-    if reverseFlowCount > 0 then
-      heatUp(txReverseQueue, rxReverseQueue, layer,
-             packetSize, reverseFlowCount, true)
-    end
-
-    heatUp(txQueue, rxQueue, layer, packetSize, flowCount, false)
+    --if reverseFlowCount > 0 then
+    --  heatUp(txReverseQueue, rxReverseQueue, layer,
+    --         packetSize, reverseFlowCount, true)
+    --end
+    --
+    --heatUp(txQueue, rxQueue, layer, packetSize, flowCount, false)
 
     io.write("Running binary search with " .. flowCount .. " flows...\n")
     local upperBound = RATE_MAX
@@ -287,6 +290,15 @@ function measureMaxThroughputWithLowLoss(txDev, rxDev, layer, packetSize,
       local tx, rx = startMeasureThroughput(txQueue, rxQueue, rate,
                                             layer, packetSize, flowCount,
                                             duration):wait()
+
+      local rxDelta = rx - totalRxCounter
+      local txDelta = tx - totalTxCounter
+
+      totalRxCounter = rx
+      totalTxCounter = tx
+
+      rx = rxDelta
+      tx = txDelta
 
       -- We may have been interrupted
       if not mg.running() then
