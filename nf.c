@@ -108,7 +108,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool* mbuf_pool) {
   memset(&device_conf, 0, sizeof(struct rte_eth_conf));
 
   struct rte_eth_rss_conf rss_conf;
-  rss_conf.rss_key = hash_key;
+  rss_conf.rss_key = NULL;
   rss_conf.rss_key_len = RSS_HASH_KEY_LENGTH;
   rss_conf.rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP;
 
@@ -123,12 +123,14 @@ static int nf_init_device(uint16_t device, struct rte_mempool* mbuf_pool) {
     return retval;
   }
 
-  uint16_t nb_rxd = RX_QUEUE_SIZE;
-  uint16_t nb_txd = TX_QUEUE_SIZE;
+  uint16_t nb_rxd = 128;
+  uint16_t nb_txd = 128;
 
   retval = rte_eth_dev_adjust_nb_rx_tx_desc(device, &nb_rxd, &nb_txd);
-  if (retval < 0)
+
+  if (retval != 0) {
     return retval;
+  }
 
   // Allocate and set up TX queues
   for (int txq = 0; txq < num_queues; txq++) {
