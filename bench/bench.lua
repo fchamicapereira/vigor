@@ -59,7 +59,7 @@ local packetConfigs = {
 -- the counter if needed without overlap
 function packetInit(buf, packetSize)
   buf:getUdpPacket():fill{
-    ethSrc = "FF:FF:FF:FF:FF:FF",
+    ethSrc = "FF:FF:FF:FF:FF:F0",
     ethDst = "00:00:00:00:00:00",
     ip4Src = "255.255.255.255",
     ip4Dst = "0.0.0.0",
