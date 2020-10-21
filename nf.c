@@ -99,7 +99,7 @@ void flood(struct rte_mbuf *frame, uint16_t skip_device, uint16_t nb_devices, ui
 static const unsigned MEMPOOL_BUFFER_COUNT = 256;
 
 // --- Initialization ---
-static int nf_init_device(uint16_t device, struct rte_mempool* mbuf_pool) {
+static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
   int retval;
   const uint16_t num_queues = rte_lcore_count();
 
@@ -149,7 +149,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool* mbuf_pool) {
     retval = rte_eth_rx_queue_setup(device, rxq, nb_rxd,
                                     rte_eth_dev_socket_id(device),
                                     NULL,
-                                    mbuf_pool);
+                                    mbuf_pools[rxq]);
     if (retval != 0) {
       return retval;
     }
@@ -230,25 +230,30 @@ int MAIN(int argc, char *argv[]) {
   // Create a memory pool
   unsigned nb_devices = rte_eth_dev_count();
 
-  char MBUF_POOL_NAME[15];
-  struct rte_mempool *mbuf_pool;
-  mbuf_pool = rte_pktmbuf_pool_create(
-      "MEMORY_POOL", // name
-      MEMPOOL_BUFFER_COUNT * nb_devices * rte_lcore_count(), // #elements
-      MBUF_CACHE_SIZE, // cache size (per-lcore)
-      0, // application private area size
-      RTE_MBUF_DEFAULT_BUF_SIZE, // data buffer size
-      rte_socket_id()            // socket ID
-  );
+  char MBUF_POOL_NAME[20];
+  struct rte_mempool **mbuf_pools;
+  mbuf_pools = (struct rte_mempool**) malloc(sizeof(struct rte_mempool*) * rte_lcore_count());
+  for (unsigned lcore_idx = 0; lcore_idx < rte_lcore_count(); lcore_idx++) {
+    sprintf(MBUF_POOL_NAME, "MEMORY_POOL_%u", lcore_idx);
 
-  if (mbuf_pool == NULL) {
-    rte_exit(EXIT_FAILURE, "Cannot create mbuf pool: %s\n",
-             rte_strerror(rte_errno));
+    mbuf_pools[lcore_idx] = rte_pktmbuf_pool_create(
+                            MBUF_POOL_NAME, // name
+                            MEMPOOL_BUFFER_COUNT * nb_devices, // #elements
+                            MBUF_CACHE_SIZE, // cache size (per-lcore)
+                            0, // application private area size
+                            RTE_MBUF_DEFAULT_BUF_SIZE, // data buffer size
+                            rte_socket_id()            // socket ID
+    );
+
+    if (mbuf_pools[lcore_idx] == NULL) {
+      rte_exit(EXIT_FAILURE, "Cannot create mbuf pool: %s\n",
+               rte_strerror(rte_errno));
+    }
   }
 
   // Initialize all devices
   for (uint16_t device = 0; device < nb_devices; device++) {
-    ret = nf_init_device(device, mbuf_pool);
+    ret = nf_init_device(device, mbuf_pools);
     if (ret == 0) {
       NF_INFO("Initialized device %" PRIu16 ".", device);
     } else {
