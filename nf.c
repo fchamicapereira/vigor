@@ -196,7 +196,7 @@ static void lcore_main(void) {
     struct rte_mbuf *mbuf;
     if (nf_receive_packet(VIGOR_DEVICE, queue_id, &mbuf)) {
       uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
-      NF_DEBUG("Core %u hash 0x%08x", lcore_id, mbuf->hash.rss);
+      NF_DEBUG("lcore %u hash 0x%08x", lcore_id, mbuf->hash.rss);
       uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
       nf_return_all_chunks(packet);
 
@@ -233,7 +233,10 @@ int MAIN(int argc, char *argv[]) {
   char MBUF_POOL_NAME[20];
   struct rte_mempool **mbuf_pools;
   mbuf_pools = (struct rte_mempool**) malloc(sizeof(struct rte_mempool*) * rte_lcore_count());
-  for (unsigned lcore_idx = 0; lcore_idx < rte_lcore_count(); lcore_idx++) {
+
+  unsigned lcore_id;
+  unsigned lcore_idx;
+  RTE_LCORE_FOREACH(lcore_id) {
     sprintf(MBUF_POOL_NAME, "MEMORY_POOL_%u", lcore_idx);
 
     mbuf_pools[lcore_idx] = rte_pktmbuf_pool_create(
@@ -242,13 +245,15 @@ int MAIN(int argc, char *argv[]) {
                             MBUF_CACHE_SIZE, // cache size (per-lcore)
                             0, // application private area size
                             RTE_MBUF_DEFAULT_BUF_SIZE, // data buffer size
-                            rte_socket_id()            // socket ID
+                            rte_lcore_to_socket_id(lcore_id) // socket ID
     );
 
     if (mbuf_pools[lcore_idx] == NULL) {
       rte_exit(EXIT_FAILURE, "Cannot create mbuf pool: %s\n",
                rte_strerror(rte_errno));
     }
+
+    lcore_idx++;
   }
 
   // Initialize all devices
@@ -267,11 +272,10 @@ int MAIN(int argc, char *argv[]) {
 
   // Run!
   // ...in single-threaded mode, that is.
-  
+
   // ... UNTIL NOW
 
   // call on each lcore
-  unsigned lcore_id;
   RTE_LCORE_FOREACH_SLAVE(lcore_id) {
     rte_eal_remote_launch((lcore_function_t *)lcore_main, NULL, lcore_id);
   }
