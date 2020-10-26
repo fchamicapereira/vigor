@@ -15,9 +15,27 @@
 #include "libvig/verified/vector.h"
 #include "libvig/verified/expirator.h"
 
+#include "nf-rss.h"
+
 struct nf_config config;
 
-struct State **dynamic_ft;
+uint8_t hash_key[RSS_HASH_KEY_LENGTH] = {
+  0x6d, 0x5a, 0x56, 0xda, 0x25, 0x5b, 0x0e, 0xc2,
+  0x41, 0x67, 0x25, 0x3d, 0x43, 0xa3, 0x8f, 0xb0,
+  0xd0, 0xca, 0x2b, 0xcb, 0xae, 0x7b, 0x30, 0xb4,
+  0x77, 0xcb, 0x2d, 0xa3, 0x80, 0x30, 0xf2, 0x0c,
+  0x6a, 0x42, 0xb7, 0x3b, 0xbe, 0xac, 0x01, 0xfa,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00
+};
+
+struct rte_eth_rss_conf rss_conf = {
+  .rss_key = hash_key,
+  .rss_key_len = RSS_HASH_KEY_LENGTH,
+  .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
+};
+
+struct State *dynamic_ft[RTE_MAX_LCORE];
 
 int policer_expire_entries(vigor_time_t time) {
   assert(time >= 0); // we don't support the past
@@ -110,14 +128,17 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
 
 bool nf_init(void) {
   unsigned capacity = config.dyn_capacity;
-  unsigned lcores = rte_lcore_count();
+  unsigned lcore_id;
 
-  dynamic_ft = (struct State**) malloc(sizeof(struct State*) * lcores);
+  RTE_LCORE_FOREACH(lcore_id) {
+    dynamic_ft[lcore_id] = alloc_state(capacity, rte_eth_dev_count());
 
-  for (unsigned lcore = 0; lcore < lcores; lcore++)
-    dynamic_ft[lcore] = alloc_state(capacity, rte_eth_dev_count());
+    if (dynamic_ft[lcore_id] == NULL) {
+      return false;
+    }
+  }
 
-  return dynamic_ft != NULL;
+  return true;
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
