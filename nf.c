@@ -118,8 +118,8 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
     return retval;
   }
 
-  uint16_t nb_rxd = 128;
-  uint16_t nb_txd = 128;
+  uint16_t nb_rxd = 136;
+  uint16_t nb_txd = 136;
 
   retval = rte_eth_dev_adjust_nb_rx_tx_desc(device, &nb_rxd, &nb_txd);
 
