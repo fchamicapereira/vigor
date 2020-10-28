@@ -128,14 +128,12 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
 
 bool nf_init(void) {
   unsigned capacity = config.dyn_capacity;
-  unsigned lcore_id;
+  unsigned lcore_id = rte_lcore_id();
 
-  RTE_LCORE_FOREACH(lcore_id) {
-    dynamic_ft[lcore_id] = alloc_state(capacity, rte_eth_dev_count());
+  dynamic_ft[lcore_id] = alloc_state(capacity, rte_eth_dev_count());
 
-    if (dynamic_ft[lcore_id] == NULL) {
-      return false;
-    }
+  if (dynamic_ft[lcore_id] == NULL) {
+    return false;
   }
 
   return true;
