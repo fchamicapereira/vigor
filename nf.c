@@ -230,7 +230,7 @@ int MAIN(int argc, char *argv[]) {
   mbuf_pools = (struct rte_mempool**) malloc(sizeof(struct rte_mempool*) * rte_lcore_count());
 
   unsigned lcore_id;
-  unsigned lcore_idx;
+  unsigned lcore_idx = 0;
   RTE_LCORE_FOREACH(lcore_id) {
     sprintf(MBUF_POOL_NAME, "MEMORY_POOL_%u", lcore_idx);
 
