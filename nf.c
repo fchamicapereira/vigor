@@ -181,6 +181,9 @@ static void lcore_main(void) {
     }
   }
 
+  nf_util_init();
+  packet_io_init();
+
   if (!nf_init()) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
@@ -261,9 +264,6 @@ int MAIN(int argc, char *argv[]) {
                ret);
     }
   }
-
-  nf_util_init();
-  packet_io_init();
 
   // Run!
   // ...in single-threaded mode, that is.

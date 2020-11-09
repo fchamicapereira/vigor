@@ -15,14 +15,15 @@
 #  include <klee/klee.h>
 #endif
 
-void **chunks_borrowed[RTE_MAX_LCORE];
-size_t chunks_borrowed_num[RTE_MAX_LCORE];
+RTE_DEFINE_PER_LCORE(void **, chunks_borrowed);
+RTE_DEFINE_PER_LCORE(size_t, chunks_borrowed_num);
 
 void nf_util_init() {
-  for (unsigned lcore_id = 0; lcore_id < RTE_MAX_LCORE; lcore_id++) {
-    chunks_borrowed_num[lcore_id] = 0;
-    chunks_borrowed[lcore_id] = (void**) malloc(sizeof(void*) * MAX_N_CHUNKS);
-  }
+  size_t *chunks_borrowed_num_ptr = &RTE_PER_LCORE(chunks_borrowed_num);
+  void** *chunks_borrowed_ptr = &RTE_PER_LCORE(chunks_borrowed);
+
+  (*chunks_borrowed_num_ptr) = 0;
+  (*chunks_borrowed_ptr) = (void**) malloc(sizeof(void*) * MAX_N_CHUNKS);
 }
 
 bool nf_has_ipv4_header(struct ether_hdr *header) {

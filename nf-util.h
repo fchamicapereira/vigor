@@ -76,16 +76,18 @@ char *nf_mac_to_str(struct ether_addr *addr);
 char *nf_ipv4_to_str(uint32_t addr);
 
 #define MAX_N_CHUNKS 100
-extern void **chunks_borrowed[RTE_MAX_LCORE];
-extern size_t chunks_borrowed_num[RTE_MAX_LCORE];
+RTE_DECLARE_PER_LCORE(void **, chunks_borrowed);
+RTE_DECLARE_PER_LCORE(size_t, chunks_borrowed_num);
 
 static inline void *nf_borrow_next_chunk(void *p, size_t length) {
-  assert(chunks_borrowed_num[rte_lcore_id()] < MAX_N_CHUNKS);
-  unsigned lcore_id = rte_lcore_id();
+  size_t *chunks_borrowed_num_ptr = &RTE_PER_LCORE(chunks_borrowed_num);
+  void** *chunks_borrowed_ptr = &RTE_PER_LCORE(chunks_borrowed);
+
+  assert(*chunks_borrowed_num_ptr < MAX_N_CHUNKS);
   void *chunk;
-  packet_borrow_next_chunk(p, length, &chunk, lcore_id);
-  chunks_borrowed[lcore_id][chunks_borrowed_num[lcore_id]] = chunk;
-  chunks_borrowed_num[lcore_id]++;
+  packet_borrow_next_chunk(p, length, &chunk);
+  (*chunks_borrowed_ptr)[*chunks_borrowed_num_ptr] = chunk;
+  (*chunks_borrowed_num_ptr)++;
   return chunk;
 }
 
@@ -108,11 +110,13 @@ static inline void *nf_borrow_next_chunk(void *p, size_t length) {
                     sizeof(fields) / sizeof(fields[0]), NULL, 0, #str_name);
 
 static inline void nf_return_all_chunks(void *p) {
-  unsigned lcore_id = rte_lcore_id();
+  size_t *chunks_borrowed_num_ptr = &RTE_PER_LCORE(chunks_borrowed_num);
+  void** *chunks_borrowed_ptr = &RTE_PER_LCORE(chunks_borrowed);
+
   do {
-    chunks_borrowed_num[lcore_id]--;
-    packet_return_chunk(p, chunks_borrowed[lcore_id][chunks_borrowed_num[lcore_id]], lcore_id);
-  } while (chunks_borrowed_num[lcore_id] != 0);
+    (*chunks_borrowed_num_ptr)--;
+    packet_return_chunk(p, (*chunks_borrowed_ptr)[*chunks_borrowed_num_ptr]);
+  } while ((*chunks_borrowed_num_ptr) != 0);
 }
 
 static inline struct ether_hdr *nf_then_get_ether_header(void *p) {
@@ -122,12 +126,11 @@ static inline struct ether_hdr *nf_then_get_ether_header(void *p) {
 }
 
 static inline struct ipv4_hdr *
-nf_then_get_ipv4_header(void *ether_header_, void *p, uint8_t **ip_options) {
-  unsigned lcore_id = rte_lcore_id();
+nf_then_get_ipv4_header(void *ether_header_, void *p, uint8_t **ip_options) {  
   struct ether_hdr *ether_header = (struct ether_hdr *)ether_header_;
   *ip_options = NULL;
 
-  uint16_t unread_len = packet_get_unread_length(p, lcore_id);
+  uint16_t unread_len = packet_get_unread_length(p);
   if ((!nf_has_ipv4_header(ether_header)) |
       (unread_len < sizeof(struct ipv4_hdr))) {
     return NULL;
@@ -155,9 +158,8 @@ nf_then_get_ipv4_header(void *ether_header_, void *p, uint8_t **ip_options) {
 
 static inline struct tcpudp_hdr *
 nf_then_get_tcpudp_header(struct ipv4_hdr *ip_header, void *p) {
-  unsigned lcore_id = rte_lcore_id();
   if ((!nf_has_tcpudp_header(ip_header)) |
-      (packet_get_unread_length(p, lcore_id) < sizeof(struct tcpudp_hdr))) {
+      (packet_get_unread_length(p) < sizeof(struct tcpudp_hdr))) {
     return NULL;
   }
   CHUNK_LAYOUT(p, tcpudp_hdr, tcpudp_fields);
@@ -168,12 +170,11 @@ nf_then_get_tcpudp_header(struct ipv4_hdr *ip_header, void *p) {
 static inline bool nf_receive_packet(uint16_t src_device,
                                      uint16_t queue_id,
                                      struct rte_mbuf **mbuf) {
-  unsigned lcore_id = rte_lcore_id();
   uint16_t actual_rx_len = rte_eth_rx_burst(src_device, queue_id, mbuf, 1);
   if (actual_rx_len != 0) {
     // TODO: for multi-mbuf packets, make sure to differentiate
     // between pkt_len and data_len
-    packet_state_total_length(rte_pktmbuf_mtod(*mbuf, char*), &(**mbuf).pkt_len, lcore_id);
+    packet_state_total_length(rte_pktmbuf_mtod(*mbuf, char*), &(**mbuf).pkt_len);
     return true;
   } else {
     return false;
