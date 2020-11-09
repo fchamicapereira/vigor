@@ -35,9 +35,11 @@ struct rte_eth_rss_conf rss_conf = {
   .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
 };
 
-struct State *dynamic_ft[RTE_MAX_LCORE];
+RTE_DEFINE_PER_LCORE(struct State *, dynamic_ft);
 
 int policer_expire_entries(vigor_time_t time) {
+  struct State ** dynamic_ft_ptr = &RTE_PER_LCORE(dynamic_ft);
+
   assert(time >= 0); // we don't support the past
   vigor_time_t exp_time =
       VIGOR_TIME_SECONDS_MULTIPLIER * config.burst / config.rate;
@@ -45,24 +47,22 @@ int policer_expire_entries(vigor_time_t time) {
   // OK because time >= config.burst / config.rate >= 0
   vigor_time_t min_time = time_u - exp_time;
 
-  unsigned lcore_id = rte_lcore_id();
-
-  return expire_items_single_map(dynamic_ft[lcore_id]->dyn_heap,
-                                 dynamic_ft[lcore_id]->dyn_keys,
-                                 dynamic_ft[lcore_id]->dyn_map,
+  return expire_items_single_map((*dynamic_ft_ptr)->dyn_heap,
+                                 (*dynamic_ft_ptr)->dyn_keys,
+                                 (*dynamic_ft_ptr)->dyn_map,
                                  min_time);
 }
 
 bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
-  unsigned lcore_id = rte_lcore_id();
+  struct State ** dynamic_ft_ptr = &RTE_PER_LCORE(dynamic_ft);
 
   int index = -1;
-  int present = map_get(dynamic_ft[lcore_id]->dyn_map, &dst, &index);
+  int present = map_get((*dynamic_ft_ptr)->dyn_map, &dst, &index);
   if (present) {
-    dchain_rejuvenate_index(dynamic_ft[lcore_id]->dyn_heap, index, time);
+    dchain_rejuvenate_index((*dynamic_ft_ptr)->dyn_heap, index, time);
 
     struct DynamicValue *value = 0;
-    vector_borrow(dynamic_ft[lcore_id]->dyn_vals, index, (void **)&value);
+    vector_borrow((*dynamic_ft_ptr)->dyn_vals, index, (void **)&value);
 
     assert(0 <= time);
     uint64_t time_u = (uint64_t)time;
@@ -94,7 +94,7 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
       fwd = true;
     }
 
-    vector_return(dynamic_ft[lcore_id]->dyn_vals, index, value);
+    vector_return((*dynamic_ft_ptr)->dyn_vals, index, value);
 
     return fwd;
   } else {
@@ -104,22 +104,22 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
     }
 
     int allocated =
-        dchain_allocate_new_index(dynamic_ft[lcore_id]->dyn_heap, &index, time);
+        dchain_allocate_new_index((*dynamic_ft_ptr)->dyn_heap, &index, time);
     if (!allocated) {
       NF_DEBUG("No more space in the policer table");
       return false;
     }
     uint32_t *key;
     struct DynamicValue *value = 0;
-    vector_borrow(dynamic_ft[lcore_id]->dyn_keys, index, (void **)&key);
-    vector_borrow(dynamic_ft[lcore_id]->dyn_vals, index, (void **)&value);
+    vector_borrow((*dynamic_ft_ptr)->dyn_keys, index, (void **)&key);
+    vector_borrow((*dynamic_ft_ptr)->dyn_vals, index, (void **)&value);
     *key = dst;
     value->bucket_size = config.burst - size;
     value->bucket_time = time;
-    map_put(dynamic_ft[lcore_id]->dyn_map, key, index);
+    map_put((*dynamic_ft_ptr)->dyn_map, key, index);
     // the other half of the key is in the map
-    vector_return(dynamic_ft[lcore_id]->dyn_keys, index, key);
-    vector_return(dynamic_ft[lcore_id]->dyn_vals, index, value);
+    vector_return((*dynamic_ft_ptr)->dyn_keys, index, key);
+    vector_return((*dynamic_ft_ptr)->dyn_vals, index, value);
 
     NF_DEBUG("  New flow. Forwarding.");
     return true;
@@ -128,11 +128,11 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
 
 bool nf_init(void) {
   unsigned capacity = config.dyn_capacity;
-  unsigned lcore_id = rte_lcore_id();
+  struct State ** dynamic_ft_ptr = &RTE_PER_LCORE(dynamic_ft);
 
-  dynamic_ft[lcore_id] = alloc_state(capacity, rte_eth_dev_count());
+  (*dynamic_ft_ptr) = alloc_state(capacity, rte_eth_dev_count());
 
-  if (dynamic_ft[lcore_id] == NULL) {
+  if ((*dynamic_ft_ptr) == NULL) {
     return false;
   }
 
@@ -148,17 +148,6 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     NF_DEBUG("Not IPv4, dropping");
     return device;
   }
-
-  NF_DEBUG("[%u] %d.%d.%d.%d -> %d.%d.%d.%d",
-    rte_lcore_id(),
-    (ipv4_header->src_addr >>  0) & 0xff,
-    (ipv4_header->src_addr >>  8) & 0xff,
-    (ipv4_header->src_addr >> 16) & 0xff,
-    (ipv4_header->src_addr >> 24) & 0xff,
-    (ipv4_header->dst_addr >>  0) & 0xff,
-    (ipv4_header->dst_addr >>  8) & 0xff,
-    (ipv4_header->dst_addr >> 16) & 0xff,
-    (ipv4_header->dst_addr >> 24) & 0xff)
 
   policer_expire_entries(now);
 
