@@ -29,10 +29,17 @@ uint8_t hash_key[RSS_HASH_KEY_LENGTH] = {
   0x00, 0x00, 0x00, 0x00
 };
 
-struct rte_eth_rss_conf rss_conf = {
-  .rss_key = hash_key,
-  .rss_key_len = RSS_HASH_KEY_LENGTH,
-  .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
+struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
+  {
+    .rss_key = hash_key,
+    .rss_key_len = RSS_HASH_KEY_LENGTH,
+    .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
+  },
+  {
+    .rss_key = hash_key,
+    .rss_key_len = RSS_HASH_KEY_LENGTH,
+    .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
+  }
 };
 
 RTE_DEFINE_PER_LCORE(struct State *, dynamic_ft);

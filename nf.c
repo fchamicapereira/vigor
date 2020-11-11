@@ -109,7 +109,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
 
   device_conf.rxmode.hw_strip_crc = 1;
   device_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
-  device_conf.rx_adv_conf.rss_conf = rss_conf;
+  device_conf.rx_adv_conf.rss_conf = rss_conf[device];
 
   // Configure the device
   retval = rte_eth_dev_configure(device, num_queues, num_queues,

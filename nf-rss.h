@@ -19,8 +19,9 @@
 
 #define MBUF_CACHE_SIZE 256
 #define RSS_HASH_KEY_LENGTH 52
+#define MAX_NUM_DEVICES 32 // this is quite arbitrary...
 
-extern struct rte_eth_rss_conf rss_conf;
+extern struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
 
 struct lcore_conf {
   struct rte_mempool* mbuf_pool;

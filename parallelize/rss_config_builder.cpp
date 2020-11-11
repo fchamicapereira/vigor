@@ -321,6 +321,7 @@ void RSSConfigBuilder::build_rss_config() {
   R3S::R3S_status_t status;
 
   R3S::R3S_cfg_set_user_data(cfg, (void *)&constraints);
+  R3S::R3S_cfg_set_skew_analysis(cfg, true);
 
   if (constraints.size() == 0) {
     Logger::log() << "No constraints. Generating random keys.";
