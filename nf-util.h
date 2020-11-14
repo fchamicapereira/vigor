@@ -23,6 +23,7 @@ struct ether_hdr;
 
 #define IP_MIN_SIZE_WORDS 5
 #define WORD_SIZE 4
+#define MAX_PKT_BURST 32
 
 #ifdef KLEE_VERIFICATION
 static struct str_field_descr ether_fields[] = {
@@ -167,18 +168,16 @@ nf_then_get_tcpudp_header(struct ipv4_hdr *ip_header, void *p) {
                                                    sizeof(struct tcpudp_hdr));
 }
 
-static inline bool nf_receive_packet(uint16_t src_device,
+static inline uint16_t nf_receive_packet(uint16_t src_device,
                                      uint16_t queue_id,
                                      struct rte_mbuf **mbuf) {
-  uint16_t actual_rx_len = rte_eth_rx_burst(src_device, queue_id, mbuf, 1);
-  if (actual_rx_len != 0) {
-    // TODO: for multi-mbuf packets, make sure to differentiate
-    // between pkt_len and data_len
-    packet_state_total_length(rte_pktmbuf_mtod(*mbuf, char*), &(**mbuf).pkt_len);
-    return true;
-  } else {
-    return false;
-  }
+  return rte_eth_rx_burst(src_device, queue_id, mbuf, MAX_PKT_BURST);
+}
+
+static inline void nf_update_packet_state_total_length(struct rte_mbuf **mbuf, uint16_t burst_id) {
+  // TODO: for multi-mbuf packets, make sure to differentiate
+  // between pkt_len and data_len
+  packet_state_total_length(rte_pktmbuf_mtod(mbuf[burst_id], char*), &(*mbuf[burst_id]).pkt_len);
 }
 
 static inline void nf_free_packet(struct rte_mbuf *mbuf) {

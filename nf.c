@@ -191,20 +191,26 @@ static void lcore_main(void) {
   NF_INFO("Core %u using queue %u forwarding packets.", lcore_id, (unsigned)queue_id);
 
   VIGOR_LOOP_BEGIN
-    struct rte_mbuf *mbuf;
-    if (nf_receive_packet(VIGOR_DEVICE, queue_id, &mbuf)) {
-      uint8_t* packet = rte_pktmbuf_mtod(mbuf, uint8_t*);
-      NF_DEBUG("lcore %u hash 0x%08x", lcore_id, mbuf->hash.rss);
-      uint16_t dst_device = nf_process(mbuf->port, packet, mbuf->data_len, VIGOR_NOW);
+    struct rte_mbuf *mbuf[MAX_PKT_BURST];
+    uint16_t nb_rx = nf_receive_packet(VIGOR_DEVICE, queue_id, mbuf);
+    if (nb_rx == 0) {
+      continue;
+    }
+
+    for (uint16_t rx_id = 0; rx_id < nb_rx; rx_id++) {
+      nf_update_packet_state_total_length(mbuf, rx_id);
+      uint8_t* packet = rte_pktmbuf_mtod(mbuf[rx_id], uint8_t*);
+      NF_DEBUG("lcore %u hash 0x%08x", lcore_id, mbuf[rx_id]->hash.rss);
+      uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
       nf_return_all_chunks(packet);
 
       if (dst_device == VIGOR_DEVICE) {
-        nf_free_packet(mbuf);
+        nf_free_packet(mbuf[rx_id]);
       } else if (dst_device == FLOOD_FRAME) {
-        flood(mbuf, VIGOR_DEVICE, VIGOR_DEVICES_COUNT, queue_id);
+        flood(mbuf[rx_id], VIGOR_DEVICE, VIGOR_DEVICES_COUNT, queue_id);
       } else {
         concretize_devices(&dst_device, rte_eth_dev_count());
-        nf_send_packet(mbuf, dst_device, queue_id);
+        nf_send_packet(mbuf[rx_id], dst_device, queue_id);
       }
     }
   VIGOR_LOOP_END
