@@ -164,6 +164,22 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
     return retval;
   }
 
+  struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
+  struct rte_eth_dev_info dev_info;
+
+  rte_eth_dev_info_get(device, &dev_info);
+  assert(rte_eth_dev_rss_reta_query(device, reta_conf, dev_info.reta_size) == 0);
+
+  for(uint16_t reta_i = 0; reta_i < dev_info.reta_size; reta_i++) {
+    uint32_t reta_id = reta_i / RTE_RETA_GROUP_SIZE;
+
+    reta_conf[reta_id].mask =
+    assert(rte_eth_dev_rss_reta_query(device, reta_conf, dev_info.reta_size) == 0);
+
+    uint32_t reta_pos = reta_i % RTE_RETA_GROUP_SIZE;
+    NF_DEBUG("device %u reta entry %03u : %lu \t (mask 0x%lx value %u)", device, (unsigned) reta_i, reta_conf[reta_id].reta[reta_pos] & reta_conf[reta_id].mask, reta_conf[reta_id].mask, (unsigned) (reta_conf[reta_id].reta[reta_pos]));
+  }
+
   return 0;
 }
 

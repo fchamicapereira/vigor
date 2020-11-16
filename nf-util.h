@@ -23,7 +23,7 @@ struct ether_hdr;
 
 #define IP_MIN_SIZE_WORDS 5
 #define WORD_SIZE 4
-#define MAX_PKT_BURST 32
+#define MAX_PKT_BURST 1
 
 #ifdef KLEE_VERIFICATION
 static struct str_field_descr ether_fields[] = {
