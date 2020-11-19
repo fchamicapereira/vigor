@@ -17,6 +17,8 @@
 #include "nf-rss.h"
 #include "nf.h"
 
+#define RETA_CONF_SIZE     (ETH_RSS_RETA_SIZE_512 / RTE_RETA_GROUP_SIZE)
+
 #ifdef KLEE_VERIFICATION
 #  include "libvig/models/hardware.h"
 #  include "libvig/models/verified/vigor-time-control.h"
@@ -165,19 +167,41 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
   }
 
   struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
-  struct rte_eth_dev_info dev_info;
+  uint32_t i;
+  unsigned nb_q = rte_lcore_count();
 
+  struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(device, &dev_info);
-  assert(rte_eth_dev_rss_reta_query(device, reta_conf, dev_info.reta_size) == 0);
+
+  /* RETA setting */
+  memset(reta_conf, 0, sizeof(reta_conf));
+
+  for (i = 0; i < dev_info.reta_size; i++)
+      reta_conf[i / RTE_RETA_GROUP_SIZE].mask = UINT64_MAX;
+
+  rxq = 0;
+  for (i = 0; i < dev_info.reta_size; i++) {
+      uint32_t reta_id = i / RTE_RETA_GROUP_SIZE;
+      uint32_t reta_pos = i % RTE_RETA_GROUP_SIZE;
+      reta_conf[reta_id].reta[reta_pos] = (uint16_t) rxq;
+      rxq = (rxq + 1) % nb_q;
+  }
+
+  /* RETA update */
+  assert(rte_eth_dev_rss_reta_update(device, reta_conf, dev_info.reta_size) == 0);
 
   for(uint16_t reta_i = 0; reta_i < dev_info.reta_size; reta_i++) {
     uint32_t reta_id = reta_i / RTE_RETA_GROUP_SIZE;
+    uint32_t reta_pos = reta_i % RTE_RETA_GROUP_SIZE;
+    uint64_t mask = 1 << reta_pos;
 
-    reta_conf[reta_id].mask =
+    reta_conf[reta_id].mask = mask;
     assert(rte_eth_dev_rss_reta_query(device, reta_conf, dev_info.reta_size) == 0);
 
-    uint32_t reta_pos = reta_i % RTE_RETA_GROUP_SIZE;
-    NF_DEBUG("device %u reta entry %03u : %lu \t (mask 0x%lx value %u)", device, (unsigned) reta_i, reta_conf[reta_id].reta[reta_pos] & reta_conf[reta_id].mask, reta_conf[reta_id].mask, (unsigned) (reta_conf[reta_id].reta[reta_pos]));
+    NF_DEBUG("device %u reta entry %03u : %u",
+             device,
+             (unsigned) reta_i,
+             (unsigned) reta_conf[reta_id].reta[reta_pos]);
   }
 
   return 0;
