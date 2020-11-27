@@ -289,7 +289,8 @@ int MAIN(int argc, char *argv[]) {
                             MBUF_CACHE_SIZE, // cache size (per-lcore)
                             0, // application private area size
                             RTE_MBUF_DEFAULT_BUF_SIZE, // data buffer size
-                            rte_lcore_to_socket_id(lcore_id) // socket ID
+                            // rte_lcore_to_socket_id(lcore_id) // socket ID
+                            0
     );
 
     if (mbuf_pools[lcore_idx] == NULL) {
