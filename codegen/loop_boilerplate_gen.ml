@@ -628,8 +628,7 @@ let gen_allocation containers =
     "  if (" ^ allocation ^ " == 0) return NULL;\n"
   in
   (gen_allocation_proto containers) ^ "\n{\n" ^
-  "  if (allocated_nf_state != NULL) return allocated_nf_state;\n" ^
-  "  struct State* ret = malloc(sizeof(struct State));\n" ^
+  "  struct State* ret = rte_malloc_socket(NULL, sizeof(struct State), 0, rte_socket_id());\n" ^
   "  if (ret == NULL) return NULL;\n" ^
   (concat_flatten_map ""
      (fun (name, cnt) ->
@@ -705,7 +704,6 @@ let gen_allocation containers =
      )
      containers []) ^
   "#endif//KLEE_VERIFICATION\n" ^
-  "  allocated_nf_state = ret;\n" ^
   "  return ret;\n" ^
   "}\n"
 
@@ -794,6 +792,8 @@ let () =
   fprintf cout "#include \"libvig/verified/lpm-dir-24-8.h\"\n";
   fprintf cout "#include \"libvig/verified/coherence.h\"\n";
   fprintf cout "#include \"libvig/verified/vigor-time.h\"\n";
+  fprintf cout "#include \"rte_malloc.h\"\n";
+  fprintf cout "#include \"rte_lcore.h\"\n";
   List.iter (fun incl ->
       fprintf cout "#include \"%s\"\n" incl;)
     !Nf_data_spec.gen_custom_includes;
