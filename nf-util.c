@@ -18,6 +18,8 @@
 RTE_DEFINE_PER_LCORE(void **, chunks_borrowed);
 RTE_DEFINE_PER_LCORE(size_t, chunks_borrowed_num);
 
+struct pkt_counter counter;
+
 void nf_util_init() {
   size_t *chunks_borrowed_num_ptr = &RTE_PER_LCORE(chunks_borrowed_num);
   void** *chunks_borrowed_ptr = &RTE_PER_LCORE(chunks_borrowed);

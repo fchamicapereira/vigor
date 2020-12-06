@@ -9,6 +9,7 @@
 #include <rte_ethdev.h>
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
+#include <rte_malloc.h>
 
 #include "libvig/verified/boilerplate-util.h"
 #include "libvig/verified/packet-io.h"
@@ -173,6 +174,9 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
   struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(device, &dev_info);
 
+  counter.reta_size = dev_info.reta_size;
+  counter.pkts[device] = rte_malloc(NULL, sizeof(uint64_t) * dev_info.reta_size, 0);
+
   /* RETA setting */
   memset(reta_conf, 0, sizeof(reta_conf));
 
@@ -238,6 +242,8 @@ static void lcore_main(void) {
     }
 
     for (uint16_t rx_id = 0; rx_id < nb_rx; rx_id++) {
+      counter.pkts[mbuf[rx_id]->port][mbuf[rx_id]->hash.rss & 0x1ff]++;
+
       nf_update_packet_state_total_length(mbuf, rx_id);
       uint8_t* packet = rte_pktmbuf_mtod(mbuf[rx_id], uint8_t*);
       NF_DEBUG("lcore %u hash 0x%08x", lcore_id, mbuf[rx_id]->hash.rss);
@@ -254,6 +260,20 @@ static void lcore_main(void) {
       }
     }
   VIGOR_LOOP_END
+}
+
+static void master() {
+  uint64_t pkts;
+
+  for (uint16_t device = 0; device < counter.nb_devices; device++) {
+    pkts = 0;
+
+    for (uint32_t bucket = 0; bucket < counter.reta_size; bucket++) {
+      pkts += counter.pkts[device][bucket];
+    }
+
+    NF_INFO("[MASTER] device %u received %" PRIu64 " pkts", device, pkts);
+  }
 }
 
 // --- Main ---
@@ -273,6 +293,9 @@ int MAIN(int argc, char *argv[]) {
 
   // Create a memory pool
   unsigned nb_devices = rte_eth_dev_count();
+
+  counter.nb_devices = nb_devices;
+  counter.pkts = (uint64_t**) rte_malloc(NULL, sizeof(uint64_t*) * nb_devices, 0);
 
   char MBUF_POOL_NAME[20];
   struct rte_mempool **mbuf_pools;
@@ -322,8 +345,8 @@ int MAIN(int argc, char *argv[]) {
     rte_eal_remote_launch((lcore_function_t *)lcore_main, NULL, lcore_id);
   }
 
-  /* call it on master lcore too */
-  lcore_main();
+  /* master is watching over load balancing */
+  master();
 
   return 0;
 }
