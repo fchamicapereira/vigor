@@ -87,6 +87,7 @@ struct pkt_counter {
 };
 
 struct pkt_counter counter;
+int epoch;
 
 static inline void *nf_borrow_next_chunk(void *p, size_t length) {
   size_t *chunks_borrowed_num_ptr = &RTE_PER_LCORE(chunks_borrowed_num);

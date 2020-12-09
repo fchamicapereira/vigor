@@ -177,6 +177,10 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
   counter.reta_size = dev_info.reta_size;
   counter.pkts[device] = rte_malloc(NULL, sizeof(uint64_t) * dev_info.reta_size, 0);
 
+  for (uint64_t bucket = 0; bucket < dev_info.reta_size; bucket++) {
+    counter.pkts[device][bucket] = 0;
+  }
+
   /* RETA setting */
   memset(reta_conf, 0, sizeof(reta_conf));
 
@@ -263,16 +267,48 @@ static void lcore_main(void) {
 }
 
 static void master() {
+  int lcore_count = rte_lcore_count();
+  uint64_t* pkts_per_core = (uint64_t*) malloc(sizeof(uint64_t) * (lcore_count - 1));
   uint64_t pkts;
+  int queue;
 
-  for (uint16_t device = 0; device < counter.nb_devices; device++) {
-    pkts = 0;
+  struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
+  memset(reta_conf, 0, sizeof(reta_conf));
 
-    for (uint32_t bucket = 0; bucket < counter.reta_size; bucket++) {
-      pkts += counter.pkts[device][bucket];
+  while (1) {
+    sleep(1);
+
+    for (uint16_t device = 0; device < counter.nb_devices; device++) {
+      pkts = 0;
+
+      for (int lcore = 0; lcore < lcore_count; lcore++) {
+        pkts_per_core[lcore] = 0;
+      }
+
+      for (uint32_t bucket = 0; bucket < counter.reta_size; bucket++) {
+        pkts += counter.pkts[device][bucket];
+
+        uint32_t reta_id = bucket / RTE_RETA_GROUP_SIZE;
+        uint32_t reta_pos = bucket % RTE_RETA_GROUP_SIZE;
+        uint64_t mask = 1 << reta_pos;
+
+        reta_conf[reta_id].mask = mask;
+        rte_eth_dev_rss_reta_query(device, reta_conf, counter.reta_size);
+
+        queue = reta_conf[reta_id].reta[reta_pos];
+        pkts_per_core[queue] += counter.pkts[device][bucket];
+      }
+
+      NF_INFO("[MASTER] device %u : %" PRIu64 " pkts", device, pkts);
+
+      for (int lcore = 0; lcore < lcore_count && pkts > 0; lcore++) {
+        NF_INFO("[MASTER] core %u   : %.2f %%", lcore, pkts_per_core[lcore] * 100.0 / pkts);
+      }
     }
 
-    NF_INFO("[MASTER] device %u received %" PRIu64 " pkts", device, pkts);
+    NF_INFO("");
+
+    epoch++;
   }
 }
 
