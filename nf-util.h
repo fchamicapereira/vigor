@@ -60,9 +60,9 @@ static struct nested_field_descr ether_nested_fields[] = {
 };
 #endif // KLEE_VERIFICATION
 
-
-void reta_from_file(uint16_t reta[512]);
-void set_reta(uint16_t device, uint16_t reta[512]);
+#define RETA_CONF_SIZE     (ETH_RSS_RETA_SIZE_512 / RTE_RETA_GROUP_SIZE)
+void reta_from_file(uint16_t reta[ETH_RSS_RETA_SIZE_512]);
+void set_reta(uint16_t device, uint16_t reta[ETH_RSS_RETA_SIZE_512]);
 
 void nf_util_init();
 
