@@ -166,6 +166,9 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
     return retval;
   }
 
+  uint16_t reta[512];
+  reta_from_file(reta);
+
   struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
   uint32_t i;
   unsigned nb_q = rte_lcore_count();

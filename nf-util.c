@@ -115,3 +115,50 @@ char *nf_ipv4_to_str(uint32_t addr) {
            (addr >> 24) & 0xFF);
   return buffer;
 }
+
+void reta_from_file(uint16_t reta[512]) {
+  int lcores = rte_lcore_count();
+
+  FILE* fp;
+  char* line = NULL;
+  char* delim;
+  size_t num_len;
+  char* number;
+
+  size_t len = 0;
+  ssize_t read;
+
+  fp = fopen("./lut.txt", "r");
+  if (fp == NULL) {
+    rte_exit(EXIT_FAILURE, "lut.txt not found");
+  }
+
+  int reta_lcores = 2;
+  while ((read = getline(&line, &len, fp)) != -1) {
+    if (reta_lcores == lcores) {
+      break;
+    }
+    reta_lcores++;
+  }
+  fclose(fp);
+
+  delim = line;
+  number = (char*) malloc(sizeof(char) * read);
+  for (uint16_t bucket = 0; bucket < 512; bucket++) {
+    num_len = 1;
+    while (*delim != ' ' && *delim != '\n') { delim++; number[num_len - 1] = *delim; num_len++; }
+    delim++;
+    number[num_len] = '\0';
+
+    reta[bucket] = atoi(number);
+    printf("bucket %" PRIu16 " value %" PRIu16 "\n", bucket, reta[bucket]);
+  }
+
+  free(number);
+  free(line);
+  rte_exit(EXIT_FAILURE, "done :)");
+}
+
+void set_reta(uint16_t device, uint16_t reta[512]) {
+
+}
