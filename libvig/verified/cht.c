@@ -2,6 +2,9 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "rte_malloc.h"
+#include "rte_lcore.h"
+
 //@ #include "prime.gh"
 //@ #include "permutations.gh"
 //@ #include "transpose.gh"
@@ -564,7 +567,7 @@ int cht_fill_cht(struct Vector *cht, uint32_t cht_height, uint32_t backend_capac
     //@ assert(sizeof(int)*cht_height*backend_capacity < INT_MAX);
 
     // Generate the permutations of 0..(cht_height - 1) for each backend
-    int *permutations = (int*) malloc(sizeof(int) * (int)(cht_height * backend_capacity));
+    int *permutations = (int*) rte_malloc_socket(NULL, sizeof(int) * (int)(cht_height * backend_capacity), 0, rte_socket_id());
     if (permutations == 0) {
         return 0;
     }
@@ -655,7 +658,7 @@ int cht_fill_cht(struct Vector *cht, uint32_t cht_height, uint32_t backend_capac
         //@ forall_append(perms, cons(new_elem, nil), is_permutation);
     }
 
-    int *next = (int*) malloc(sizeof(int) * (int)(cht_height));
+    int *next = (int*) rte_malloc_socket(NULL, sizeof(int) * (int)(cht_height), 0, rte_socket_id());
     if (next == 0) {
         free(permutations);
         return 0;
