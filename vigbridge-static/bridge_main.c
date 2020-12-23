@@ -276,9 +276,16 @@ bool nf_init(void) {
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
 
   bridge_expire_entries(now);
+
+  if (*write_attempt && !*write_state) {
+    return 1;
+  }
 
   int forward_to = bridge_get_device(&ether_header->d_addr, device);
 

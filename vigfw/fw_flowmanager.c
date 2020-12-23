@@ -11,6 +11,7 @@
 #include "libvig/verified/expirator.h"
 
 #include "state.h"
+#include "../nf-util.h"
 
 struct FlowManager {
   struct State *state;
@@ -76,6 +77,12 @@ bool flow_manager_get_refresh_flow(struct FlowManager *manager,
   int index;
   if (map_get(manager->state->fm, id, &index) == 0) {
     return false;
+  }
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+  if (!*write_state) {
+    *write_attempt = true;
+    return 1;
   }
   uint32_t *int_dev;
   vector_borrow(manager->state->int_devices, index, (void **)&int_dev);

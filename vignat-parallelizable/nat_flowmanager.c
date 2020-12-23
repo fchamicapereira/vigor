@@ -11,6 +11,7 @@
 #include "libvig/verified/expirator.h"
 
 #include "state.h"
+#include "../nf-util.h"
 
 struct FlowManager {
   struct State *state;
@@ -70,6 +71,12 @@ bool flow_manager_get_internal(struct FlowManager *manager, struct FlowId *id,
   if (map_get(manager->state->fm, id, &index) == 0) {
     return false;
   }
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+  if (!*write_state) {
+    *write_attempt = true;
+    return true;
+  }
   *external_port = index + manager->state->start_port;
   dchain_rejuvenate_index(manager->state->heap, index, time);
   return true;
@@ -81,6 +88,12 @@ bool flow_manager_get_external(struct FlowManager *manager,
   int index = external_port - manager->state->start_port;
   if (dchain_is_index_allocated(manager->state->heap, index) == 0) {
     return false;
+  }
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+  if (!*write_state) {
+    *write_attempt = true;
+    return true;
   }
 
   struct FlowId *key = 0;

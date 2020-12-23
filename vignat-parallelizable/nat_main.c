@@ -11,23 +11,23 @@
 struct nf_config config;
 
 uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-  0x2f, 0xb9, 0x81, 0x7b, 0xfc, 0xb0, 0x21, 0x8a,
-  0x12, 0xb5, 0x2f, 0x75, 0x5c, 0xd3, 0xc8, 0x92,
-  0xda, 0x7f, 0xbf, 0x1a, 0x63, 0x69, 0xd8, 0x8d,
-  0xa2, 0x2c, 0x47, 0x57, 0x18, 0x13, 0xc6, 0x47,
-  0xcd, 0x47, 0xc2, 0xc9
+  0xf2, 0xb8, 0x5f, 0xb0, 0x71, 0x0e, 0x98, 0xf5, 
+  0x54, 0x15, 0x99, 0xa1, 0x0f, 0xf5, 0x56, 0xfa, 
+  0x97, 0xa4, 0x76, 0xbc, 0xe2, 0x83, 0x5e, 0xce, 
+  0xc1, 0xa2, 0x05, 0xa1, 0x2b, 0x3d, 0xf1, 0x1d, 
+  0xf5, 0x50, 0xce, 0x67, 0x5e, 0x66, 0x5c, 0xb3, 
+  0x7b, 0xf5, 0x54, 0x8b, 0xea, 0xab, 0x85, 0x81, 
+  0x4f, 0xfb, 0x3d, 0x31
 };
 
 uint8_t hash_key_1[RSS_HASH_KEY_LENGTH] = {
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00
+  0xf2, 0xb8, 0x5f, 0xb0, 0x71, 0x0e, 0x98, 0xf5, 
+  0x54, 0x15, 0x99, 0xa1, 0x0f, 0xf5, 0x56, 0xfa, 
+  0x97, 0xa4, 0x76, 0xbc, 0xe2, 0x83, 0x5e, 0xce, 
+  0xc1, 0xa2, 0x05, 0xa1, 0x2b, 0x3d, 0xf1, 0x1d, 
+  0xf5, 0x50, 0xce, 0x67, 0x5e, 0x66, 0x5c, 0xb3, 
+  0x7b, 0xf5, 0x54, 0x8b, 0xea, 0xab, 0x85, 0x81, 
+  0x4f, 0xfb, 0x3d, 0x31
 };
 
 struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
@@ -55,6 +55,9 @@ bool nf_init(void) {
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+
   struct FlowManager ** flow_manager_ptr = &RTE_PER_LCORE(_flow_manager);
   struct FlowManager *flow_manager = (*flow_manager_ptr);
 
@@ -62,6 +65,9 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
 
   flow_manager_expire(flow_manager, now);
   NF_DEBUG("Flows have been expired");
+  if (*write_attempt && !*write_state) {
+    return 1;
+  }
 
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
   uint8_t *ip_options;
@@ -87,6 +93,9 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     struct FlowId internal_flow;
     if (flow_manager_get_external(flow_manager, tcpudp_header->dst_port, now,
                                   &internal_flow)) {
+      if (*write_attempt && !*write_state) {
+        return 1;
+      }
       NF_DEBUG("Found internal flow.");
       LOG_FLOWID(&internal_flow, NF_DEBUG);
 
@@ -95,6 +104,11 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
           internal_flow.protocol != ipv4_header->next_proto_id) {
         NF_DEBUG("Spoofing attempt, dropping.");
         return device;
+      }
+
+      if (!*write_state) {
+        *write_attempt = true;
+        return 1;
       }
 
       ipv4_header->dst_addr = internal_flow.src_ip;
@@ -121,21 +135,35 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     uint16_t external_port;
     if (!flow_manager_get_internal(flow_manager, &id, now, &external_port)) {
       NF_DEBUG("New flow");
-
+      if (!*write_state) {
+        *write_attempt = true;
+        return 1;
+      }
       if (!flow_manager_allocate_flow(flow_manager, &id, device, now,
                                       &external_port)) {
         NF_DEBUG("No space for the flow, dropping");
         return device;
       }
     }
+    if (*write_attempt && !*write_state) {
+      return 1;
+    }
 
     NF_DEBUG("Forwarding from ext port:%d", external_port);
+    if (!*write_state) {
+      *write_attempt = true;
+      return 1;
+    }
 
     ipv4_header->src_addr = config.external_addr;
     tcpudp_header->src_port = external_port;
     dst_device = config.wan_device;
   }
 
+  if (!*write_state) {
+    *write_attempt = true;
+    return 1;
+  }
   nf_set_ipv4_udptcp_checksum(ipv4_header, tcpudp_header, buffer);
 
   concretize_devices(&dst_device, rte_eth_dev_count());
