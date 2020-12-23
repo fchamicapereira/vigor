@@ -17,6 +17,16 @@
 #  include "libvig/models/verified/packet-io-control.h"
 #endif // KLEE_VERIFICATION
 
+#include <rte_common.h>
+#include <rte_atomic.h>
+#include <rte_pause.h>
+#include <rte_rwlock.h>
+
+RTE_DECLARE_PER_LCORE(bool, write_attempt);
+RTE_DECLARE_PER_LCORE(bool, write_state);
+
+rte_rwlock_t *state_lock;
+
 // rte_ether
 struct ether_addr;
 struct ether_hdr;

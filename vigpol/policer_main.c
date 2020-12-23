@@ -20,13 +20,13 @@
 struct nf_config config;
 
 uint8_t hash_key[RSS_HASH_KEY_LENGTH] = {
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00
+  0xf2, 0xb8, 0x5f, 0xb0, 0x71, 0x0e, 0x98, 0xf5, 
+  0x54, 0x15, 0x99, 0xa1, 0x0f, 0xf5, 0x56, 0xfa, 
+  0x97, 0xa4, 0x76, 0xbc, 0xe2, 0x83, 0x5e, 0xce, 
+  0xc1, 0xa2, 0x05, 0xa1, 0x2b, 0x3d, 0xf1, 0x1d, 
+  0xf5, 0x50, 0xce, 0x67, 0x5e, 0x66, 0x5c, 0xb3, 
+  0x7b, 0xf5, 0x54, 0x8b, 0xea, 0xab, 0x85, 0x81, 
+  0x4f, 0xfb, 0x3d, 0x31
 };
 
 struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
@@ -61,11 +61,17 @@ int policer_expire_entries(vigor_time_t time) {
 }
 
 bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
   struct State ** dynamic_ft_ptr = &RTE_PER_LCORE(dynamic_ft);
 
   int index = -1;
   int present = map_get((*dynamic_ft_ptr)->dyn_map, &dst, &index);
   if (present) {
+    if (!*write_state) {
+      *write_attempt = true;
+      return true;
+    }
     dchain_rejuvenate_index((*dynamic_ft_ptr)->dyn_heap, index, time);
 
     struct DynamicValue *value = 0;
@@ -110,6 +116,11 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
       return false;
     }
 
+    if (!*write_state) {
+      *write_attempt = true;
+      return true;
+    }
+
     int allocated =
         dchain_allocate_new_index((*dynamic_ft_ptr)->dyn_heap, &index, time);
     if (!allocated) {
@@ -147,6 +158,9 @@ bool nf_init(void) {
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
   uint8_t *ip_options;
   struct ipv4_hdr *ipv4_header =
@@ -158,6 +172,10 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
 
   policer_expire_entries(now);
 
+  if (*write_attempt && !*write_state) {
+    return 1;
+  }
+
   if (device == config.lan_device) {
     // Simply forward outgoing packets.
     NF_DEBUG("Outgoing packet. Not policing.");
@@ -165,6 +183,10 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
   } else if (device == config.wan_device) {
     // Police incoming packets.
     bool fwd = policer_check_tb(ipv4_header->dst_addr, buffer_length, now);
+
+    if (*write_attempt && !*write_state) {
+      return 1;
+    }
 
     if (fwd) {
       NF_DEBUG("Incoming packet within policed rate. Forwarding.");

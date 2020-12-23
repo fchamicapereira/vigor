@@ -206,9 +206,30 @@ static void lcore_main(void) {
     for (uint16_t rx_id = 0; rx_id < nb_rx; rx_id++) {
       nf_update_packet_state_total_length(mbuf, rx_id);
       uint8_t* packet = rte_pktmbuf_mtod(mbuf[rx_id], uint8_t*);
-      NF_DEBUG("lcore %u hash 0x%08x", lcore_id, mbuf[rx_id]->hash.rss);
+
+      bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+      bool* write_state = &RTE_PER_LCORE(write_state);
+
+      *write_attempt = false;
+      *write_state = false;
+
+      NF_DEBUG("read lock");
+      rte_rwlock_read_lock(state_lock);
       uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
+      rte_rwlock_read_unlock(state_lock);
+      NF_DEBUG("read unlock");
       nf_return_all_chunks(packet);
+
+      if (*write_attempt) {
+        NF_DEBUG("write attempt in read state");
+        *write_state = true;
+        NF_DEBUG("write lock");
+        rte_rwlock_write_lock(state_lock);
+        uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
+        rte_rwlock_write_unlock(state_lock);
+        nf_return_all_chunks(packet);
+        NF_DEBUG("write unlock");
+      }
 
       if (dst_device == VIGOR_DEVICE) {
         nf_free_packet(mbuf[rx_id]);

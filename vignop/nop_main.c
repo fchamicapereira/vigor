@@ -3,6 +3,10 @@
 #include "nf-util.h"
 #include "nf-rss.h"
 
+#include <rte_common.h>
+#include <rte_atomic.h>
+#include <rte_pause.h>
+
 struct nf_config config;
 
 uint8_t hash_key[RSS_HASH_KEY_LENGTH] = {

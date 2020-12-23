@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #include "double-chain-impl.h"
 
@@ -11,10 +12,14 @@
 
 #include "rte_malloc.h"
 #include "rte_lcore.h"
+#include <rte_per_lcore.h>
 
 #ifndef NULL
 #define NULL 0
 #endif//NULL
+
+RTE_DECLARE_PER_LCORE(bool, write_attempt);
+RTE_DECLARE_PER_LCORE(bool, write_state);
 
 struct DoubleChain {
   struct dchain_cell* cells;
@@ -789,6 +794,8 @@ int dchain_expire_one_index(struct DoubleChain* chain,
                 (double_chainp(ch, chain) &*&
                  result == 0)))); @*/
 {
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
   //@ open double_chainp(ch, chain);
   //@ assert chain->cells |-> ?cells;
   //@ assert chain->timestamps |-> ?timestamps;
@@ -808,6 +815,10 @@ int dchain_expire_one_index(struct DoubleChain* chain,
     if (chain->timestamps[*index_out] < time) {
       //@ glue_timestamp(timestamps, tmstmps, oi);
       //@ assert nth(oi, tmstmps) == dchain_get_oldest_time_fp(ch);
+      if (!*write_state) {
+        *write_attempt = true;
+        return 1;
+      }
       int rez = dchain_impl_free_index(chain->cells, *index_out);
       /*@
         {
