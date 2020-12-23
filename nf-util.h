@@ -17,15 +17,12 @@
 #  include "libvig/models/verified/packet-io-control.h"
 #endif // KLEE_VERIFICATION
 
-#include <rte_common.h>
-#include <rte_atomic.h>
-#include <rte_pause.h>
-#include <rte_rwlock.h>
+#include "nf-locks.h"
 
 RTE_DECLARE_PER_LCORE(bool, write_attempt);
 RTE_DECLARE_PER_LCORE(bool, write_state);
 
-extern rte_rwlock_t state_lock;
+extern nf_lock_t nf_lock;
 
 // rte_ether
 struct ether_addr;

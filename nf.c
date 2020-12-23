@@ -194,6 +194,9 @@ static void lcore_main(void) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
 
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+
   NF_INFO("Core %u using queue %u forwarding packets.", lcore_id, (unsigned)queue_id);
 
   VIGOR_LOOP_BEGIN
@@ -207,16 +210,11 @@ static void lcore_main(void) {
       nf_update_packet_state_total_length(mbuf, rx_id);
       uint8_t* packet = rte_pktmbuf_mtod(mbuf[rx_id], uint8_t*);
 
-      bool* write_attempt = &RTE_PER_LCORE(write_attempt);
-      bool* write_state = &RTE_PER_LCORE(write_state);
-
       *write_attempt = false;
       *write_state = false;
 
       NF_DEBUG("read lock");
-      rte_rwlock_read_lock(&state_lock);
       uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
-      rte_rwlock_read_unlock(&state_lock);
       NF_DEBUG("read unlock");
       nf_return_all_chunks(packet);
 
@@ -224,11 +222,13 @@ static void lcore_main(void) {
         NF_DEBUG("write attempt in read state");
         *write_state = true;
         NF_DEBUG("write lock");
-        rte_rwlock_write_lock(&state_lock);
+        nf_lock_write_lock(&nf_lock);
         uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
-        rte_rwlock_write_unlock(&state_lock);
+        nf_lock_write_unlock(&nf_lock);
         nf_return_all_chunks(packet);
         NF_DEBUG("write unlock");
+      } else {
+        nf_lock_allow_writes(&nf_lock);
       }
 
       if (dst_device == VIGOR_DEVICE) {
