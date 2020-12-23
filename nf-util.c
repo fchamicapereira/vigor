@@ -21,6 +21,8 @@ RTE_DEFINE_PER_LCORE(size_t, chunks_borrowed_num);
 RTE_DEFINE_PER_LCORE(bool, write_attempt);
 RTE_DEFINE_PER_LCORE(bool, write_state);
 
+rte_rwlock_t state_lock;
+
 void nf_util_init() {
   size_t *chunks_borrowed_num_ptr = &RTE_PER_LCORE(chunks_borrowed_num);
   void** *chunks_borrowed_ptr = &RTE_PER_LCORE(chunks_borrowed);
@@ -28,7 +30,7 @@ void nf_util_init() {
   (*chunks_borrowed_num_ptr) = 0;
   (*chunks_borrowed_ptr) = (void**) malloc(sizeof(void*) * MAX_N_CHUNKS);
 
-  rte_rwlock_init(state_lock);
+  rte_rwlock_init(&state_lock);
 }
 
 bool nf_has_ipv4_header(struct ether_hdr *header) {

@@ -25,7 +25,7 @@
 RTE_DECLARE_PER_LCORE(bool, write_attempt);
 RTE_DECLARE_PER_LCORE(bool, write_state);
 
-rte_rwlock_t *state_lock;
+extern rte_rwlock_t state_lock;
 
 // rte_ether
 struct ether_addr;

@@ -214,9 +214,9 @@ static void lcore_main(void) {
       *write_state = false;
 
       NF_DEBUG("read lock");
-      rte_rwlock_read_lock(state_lock);
+      rte_rwlock_read_lock(&state_lock);
       uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
-      rte_rwlock_read_unlock(state_lock);
+      rte_rwlock_read_unlock(&state_lock);
       NF_DEBUG("read unlock");
       nf_return_all_chunks(packet);
 
@@ -224,9 +224,9 @@ static void lcore_main(void) {
         NF_DEBUG("write attempt in read state");
         *write_state = true;
         NF_DEBUG("write lock");
-        rte_rwlock_write_lock(state_lock);
+        rte_rwlock_write_lock(&state_lock);
         uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
-        rte_rwlock_write_unlock(state_lock);
+        rte_rwlock_write_unlock(&state_lock);
         nf_return_all_chunks(packet);
         NF_DEBUG("write unlock");
       }
