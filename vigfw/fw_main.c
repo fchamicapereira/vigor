@@ -123,7 +123,10 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
   }
 
   concretize_devices(&dst_device, rte_eth_dev_count());
-
+  if (!*write_state) {
+    *write_attempt = true;
+    return 1;
+  }
   ether_header->s_addr = config.device_macs[dst_device];
   ether_header->d_addr = config.endpoint_macs[dst_device];
 

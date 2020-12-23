@@ -11,7 +11,6 @@
 #include "libvig/verified/expirator.h"
 
 #include "state.h"
-#include "../nf-util.h"
 
 struct FlowManager {
   struct State *state;

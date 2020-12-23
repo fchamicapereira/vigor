@@ -6,6 +6,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "../nf-util.h"
 
 struct FlowManager;
 
