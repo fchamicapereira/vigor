@@ -15,6 +15,7 @@ typedef struct {
 	uint8_t write_permissions[RTE_MAX_LCORE];
 	volatile uint32_t pending_writes;
 	rte_spinlock_t write_lock;
+	int dummy;
 } nf_lock_t;
 
 static inline void
@@ -22,31 +23,44 @@ nf_lock_init(nf_lock_t *nfl)
 {
 	unsigned lcore_id;
 	RTE_LCORE_FOREACH(lcore_id) {
-		nfl->write_permissions[lcore_id] = 0;
+		nfl->write_permissions[lcore_id] = 1;
 	}
 	nfl->pending_writes = 0;
 	rte_spinlock_init(&nfl->write_lock);
 }
 
 static inline void
-nf_lock_allow_writes(nf_lock_t *nfl) {
+nf_lock_block_writes(nf_lock_t *nfl) {
+	unsigned lcore_id = rte_lcore_id();
+	// preemptive block
+	nfl->write_permissions[lcore_id] = 0;
+
 	if (!nfl->pending_writes) {
-		// no writes pending
 		return;
 	}
 
-	unsigned lcore_id = rte_lcore_id();
-
+	// blocked too fast, unlock and allow write
 	nfl->write_permissions[lcore_id] = 1;
-	while (nfl->pending_writes != 0) {}
+	while (nfl->pending_writes) {
+		// prevent the compiler from removing this loop
+		nfl->dummy++;
+	}
 	nfl->write_permissions[lcore_id] = 0;
+}
+
+static inline void
+nf_lock_allow_writes(nf_lock_t *nfl) {
+	unsigned lcore_id = rte_lcore_id();
+	nfl->write_permissions[lcore_id] = 1;
 }
 
 static inline void
 nf_lock_write_lock(nf_lock_t *nfl) {
 	rte_atomic32_inc((rte_atomic32_t *)(intptr_t)&nfl->pending_writes);
-	
-	unsigned lcore_id;
+
+	// allow myself to write
+	unsigned lcore_id = rte_lcore_id();
+	nfl->write_permissions[lcore_id] = 1;
 	int success = 0;
 	while (success == 0) {
 		success = 1;
@@ -57,7 +71,6 @@ nf_lock_write_lock(nf_lock_t *nfl) {
 			}
 		}
 	}
-
 	rte_spinlock_lock(&nfl->write_lock);
 }
 

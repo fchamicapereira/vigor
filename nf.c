@@ -213,24 +213,18 @@ static void lcore_main(void) {
       *write_attempt = false;
       *write_state = false;
 
+      nf_lock_block_writes(&nf_lock);
       uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
       nf_return_all_chunks(packet);
 
       if (*write_attempt) {
-        NF_DEBUG("[%u] write attempt in read state", rte_lcore_id());
         *write_state = true;
-        NF_DEBUG("[%u] write locking...", rte_lcore_id());
         nf_lock_write_lock(&nf_lock);
-        NF_DEBUG("[%u] write LOCKED", rte_lcore_id());
         uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
-        NF_DEBUG("[%u] write unlocking...", rte_lcore_id());
         nf_lock_write_unlock(&nf_lock);
-        NF_DEBUG("[%u] write UNLOCKED", rte_lcore_id());
         nf_return_all_chunks(packet);
       } else {
-        NF_DEBUG("[%u] allowing writes", rte_lcore_id());
         nf_lock_allow_writes(&nf_lock);
-        NF_DEBUG("[%u] FREE READ", rte_lcore_id());
       }
 
       if (dst_device == VIGOR_DEVICE) {
