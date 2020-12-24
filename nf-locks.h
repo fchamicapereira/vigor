@@ -12,7 +12,7 @@ extern "C" {
 #include <rte_lcore.h>
 
 typedef struct {
-	uint8_t write_permissions[RTE_MAX_LCORE];
+	volatile uint8_t write_permissions[RTE_MAX_LCORE];
 	volatile uint32_t pending_writes;
 	rte_spinlock_t write_lock;
 	int dummy;
@@ -30,6 +30,12 @@ nf_lock_init(nf_lock_t *nfl)
 }
 
 static inline void
+nf_lock_allow_writes(nf_lock_t *nfl) {
+	unsigned lcore_id = rte_lcore_id();
+	nfl->write_permissions[lcore_id] = 1;
+}
+
+static inline void
 nf_lock_block_writes(nf_lock_t *nfl) {
 	unsigned lcore_id = rte_lcore_id();
 	// preemptive block
@@ -43,15 +49,9 @@ nf_lock_block_writes(nf_lock_t *nfl) {
 	nfl->write_permissions[lcore_id] = 1;
 	while (nfl->pending_writes) {
 		// prevent the compiler from removing this loop
-		nfl->dummy++;
+		__asm__ __volatile__("");
 	}
 	nfl->write_permissions[lcore_id] = 0;
-}
-
-static inline void
-nf_lock_allow_writes(nf_lock_t *nfl) {
-	unsigned lcore_id = rte_lcore_id();
-	nfl->write_permissions[lcore_id] = 1;
 }
 
 static inline void
