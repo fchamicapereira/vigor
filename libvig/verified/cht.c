@@ -660,7 +660,7 @@ int cht_fill_cht(struct Vector *cht, uint32_t cht_height, uint32_t backend_capac
 
     int *next = (int*) rte_malloc_socket(NULL, sizeof(int) * (int)(cht_height), 0, rte_socket_id());
     if (next == 0) {
-        free(permutations);
+        rte_free(permutations);
         return 0;
     }
 
@@ -874,8 +874,8 @@ int cht_fill_cht(struct Vector *cht, uint32_t cht_height, uint32_t backend_capac
     //@ assert (true == valid_cht(vals, backend_capacity, cht_height));
 
     // Free memory
-    free(next);
-    free(permutations);
+    rte_free(next);
+    rte_free(permutations);
     return 1;
 }
 
