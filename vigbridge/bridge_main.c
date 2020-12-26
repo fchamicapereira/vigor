@@ -325,6 +325,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
 
   // always writes
   if (!*write_state) {
+    *write_attempt = 1;
     return 1;
   }
 
