@@ -25,12 +25,49 @@
 #include "nf-log.h"
 #include "bridge_config.h"
 #include "state.h"
+#include "nf-rss.h"
 
 struct nf_config config;
 
-struct State *mac_tables;
+uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
+  0xf2, 0xb8, 0x5f, 0xb0, 0x71, 0x0e, 0x98, 0xf5, 
+  0x54, 0x15, 0x99, 0xa1, 0x0f, 0xf5, 0x56, 0xfa, 
+  0x97, 0xa4, 0x76, 0xbc, 0xe2, 0x83, 0x5e, 0xce, 
+  0xc1, 0xa2, 0x05, 0xa1, 0x2b, 0x3d, 0xf1, 0x1d, 
+  0xf5, 0x50, 0xce, 0x67, 0x5e, 0x66, 0x5c, 0xb3, 
+  0x7b, 0xf5, 0x54, 0x8b, 0xea, 0xab, 0x85, 0x81, 
+  0x4f, 0xfb, 0x3d, 0x31
+};
+
+uint8_t hash_key_1[RSS_HASH_KEY_LENGTH] = {
+  0xf2, 0xb8, 0x5f, 0xb0, 0x71, 0x0e, 0x98, 0xf5, 
+  0x54, 0x15, 0x99, 0xa1, 0x0f, 0xf5, 0x56, 0xfa, 
+  0x97, 0xa4, 0x76, 0xbc, 0xe2, 0x83, 0x5e, 0xce, 
+  0xc1, 0xa2, 0x05, 0xa1, 0x2b, 0x3d, 0xf1, 0x1d, 
+  0xf5, 0x50, 0xce, 0x67, 0x5e, 0x66, 0x5c, 0xb3, 
+  0x7b, 0xf5, 0x54, 0x8b, 0xea, 0xab, 0x85, 0x81, 
+  0x4f, 0xfb, 0x3d, 0x31
+};
+
+struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
+  {
+    .rss_key = hash_key_0,
+    .rss_key_len = RSS_HASH_KEY_LENGTH,
+    .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
+  },
+  {
+    .rss_key = hash_key_1,
+    .rss_key_len = RSS_HASH_KEY_LENGTH,
+    .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
+  }
+};
+
+RTE_DEFINE_PER_LCORE(struct State *, _mac_tables);
 
 int bridge_expire_entries(vigor_time_t time) {
+  struct State ** mac_tables_ptr = &RTE_PER_LCORE(_mac_tables);
+  struct State *mac_tables = (*mac_tables_ptr);
+
   assert(time >= 0); // we don't support the past
   assert(sizeof(vigor_time_t) <= sizeof(uint64_t));
   uint64_t time_u = (uint64_t)time; // OK because of the two asserts
@@ -40,6 +77,9 @@ int bridge_expire_entries(vigor_time_t time) {
 }
 
 int bridge_get_device(struct ether_addr *dst, uint16_t src_device) {
+  struct State ** mac_tables_ptr = &RTE_PER_LCORE(_mac_tables);
+  struct State *mac_tables = (*mac_tables_ptr);
+
   int device = -1;
   struct StaticKey k;
   memcpy(&k.addr, dst, sizeof(struct ether_addr));
@@ -66,6 +106,9 @@ int bridge_get_device(struct ether_addr *dst, uint16_t src_device) {
 
 void bridge_put_update_entry(struct ether_addr *src, uint16_t src_device,
                              vigor_time_t time) {
+  struct State ** mac_tables_ptr = &RTE_PER_LCORE(_mac_tables);
+  struct State *mac_tables = (*mac_tables_ptr);
+
   int index = -1;
   int hash = ether_addr_hash(src);
   int present = map_get(mac_tables->dyn_map, src, &index);
@@ -256,25 +299,35 @@ static void read_static_ft_from_array(struct Map *stat_map,
 #endif // KLEE_VERIFICATION
 
 bool nf_init(void) {
+  struct State ** mac_tables_ptr = &RTE_PER_LCORE(_mac_tables);
+
   unsigned stat_capacity = 8192; // Has to be power of 2
   unsigned capacity = config.dyn_capacity;
   assert(stat_capacity < CAPACITY_UPPER_LIMIT - 1);
 
-  mac_tables = alloc_state(capacity, stat_capacity, rte_eth_dev_count());
-  if (mac_tables == NULL) {
+  (*mac_tables_ptr) = alloc_state(capacity, stat_capacity, rte_eth_dev_count());
+  if ((*mac_tables_ptr) == NULL) {
     return false;
   }
 #ifdef NFOS
-  read_static_ft_from_array(mac_tables->st_map, mac_tables->st_vec,
+  read_static_ft_from_array((*mac_tables_ptr)->st_map, (*mac_tables_ptr)->st_vec,
                             stat_capacity);
 #else
-  read_static_ft_from_file(mac_tables->st_map, mac_tables->st_vec,
+  read_static_ft_from_file((*mac_tables_ptr)->st_map, (*mac_tables_ptr)->st_vec,
                            stat_capacity);
 #endif
   return true;
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+
+  // always writes
+  if (!*write_state) {
+    return 1;
+  }
+
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
 
   bridge_expire_entries(now);
