@@ -105,7 +105,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
 
   if (!*write_state) {
     *write_attempt = true;
-    return backend;
+    return 1;
   }
 
   struct LoadBalancedBackend backend = lb_get_backend(balancer, &flow, now,
