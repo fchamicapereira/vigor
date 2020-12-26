@@ -55,11 +55,6 @@ struct LoadBalancedBackend lb_get_backend(struct LoadBalancer *balancer,
         balancer->state->active_backends, balancer->state->cht_height,
         balancer->state->backend_capacity, &backend_index);
     if (found) {
-      if (!*write_state) {
-        *write_attempt = 1;
-        return backend;
-      }
-
       if (dchain_allocate_new_index(balancer->state->flow_chain, &flow_index,
                                     now) != 0) {
         struct LoadBalancedFlow *vec_flow;
@@ -89,11 +84,6 @@ struct LoadBalancedBackend lb_get_backend(struct LoadBalancer *balancer,
     }
 
   } else {
-    if (!*write_state) {
-      *write_attempt = 1;
-      return backend;
-    }
-
     uint32_t *vec_backend_index;
     vector_borrow(balancer->state->flow_id_to_backend_id, flow_index,
                   (void **)&vec_backend_index);

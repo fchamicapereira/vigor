@@ -95,12 +95,17 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
 
   if (device != config.wan_device) {
     if (!*write_state) {
-      *write_attempt = 1;
+      *write_attempt = true;
       return 1;
     }
 
     lb_process_heartbit(balancer, &flow, ether_header->s_addr, device, now);
     return device;
+  }
+
+  if (!*write_state) {
+    *write_attempt = true;
+    return backend;
   }
 
   struct LoadBalancedBackend backend = lb_get_backend(balancer, &flow, now,
