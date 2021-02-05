@@ -161,7 +161,7 @@ void packet_send(void *p, uint16_t dst_device) {
   klee_trace_ret();
   klee_trace_param_u64((uint64_t)p, "p");
   klee_trace_param_u16(dst_device, "dst_device");
-  klee_assert(!global_sent);
+  //klee_assert(!global_sent);
   global_sent = true;
 }
 

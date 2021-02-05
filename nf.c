@@ -87,7 +87,7 @@ void flood(struct rte_mbuf *frame, uint16_t skip_device, uint16_t nb_devices) {
   for (uint16_t device = 0; device < nb_devices; device++) {
     if (device == skip_device)
       continue;
-    total_sent += rte_eth_tx_burst(device, 0, &frame, 1);
+    total_sent += rte_eth_tx_burst(device, 0, &frame, 1, device == nb_devices - 1);
   }
   if (total_sent != nb_devices - 1) {
     rte_pktmbuf_free(frame);

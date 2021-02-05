@@ -15,11 +15,11 @@ let containers = ["dyn_map", Map ("ether_addr", "capacity", "");
 
 let constraints = ["dyn_val_condition", ( "DynamicValue",
                                           [Bop (Le, {t=Unknown;v=Int 0}, {t=Unknown;v=Id "device"});
-                                           Bop (Lt, {t=Unknown;v=Id "device"}, {t=Unknown;v=Int 2});
+                                           Bop (Lt, {t=Unknown;v=Id "device"}, {t=Unknown;v=Int 3});
                                           ]);
                    "stat_map_condition", ( "StaticKey",
                                            [Bop (Le, {t=Unknown;v=Int 0}, {t=Unknown;v=Id "index"});
-                                            Bop (Lt, {t=Unknown;v=Id "index"}, {t=Unknown;v=Int 2});
+                                            Bop (Lt, {t=Unknown;v=Id "index"}, {t=Unknown;v=Int 3});
                                            ])]
 
 let gen_custom_includes = ref []

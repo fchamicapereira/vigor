@@ -243,18 +243,20 @@ static inline uint16_t rte_eth_rx_burst(uint16_t port_id, uint16_t queue_id,
 
 static inline uint16_t rte_eth_tx_burst(uint16_t port_id, uint16_t queue_id,
                                         struct rte_mbuf **tx_pkts,
-                                        uint16_t nb_pkts) {
+                                        uint16_t nb_pkts, bool should_free) {
   klee_assert(devices_started[port_id]);
   klee_assert(queue_id == 0); // we only support that
   klee_assert(nb_pkts == 1);  // same
 
   packet_send((**tx_pkts).buf_addr, port_id);
 
-  // Undo our pseudo-chain trickery
-  klee_allow_access((*tx_pkts)->next, (*tx_pkts)->pool->elt_size);
-  free((*tx_pkts)->next);
-  (*tx_pkts)->next = NULL;
-  rte_mbuf_raw_free((*tx_pkts));
+  if (should_free) {
+    // Undo our pseudo-chain trickery
+    klee_allow_access((*tx_pkts)->next, (*tx_pkts)->pool->elt_size);
+    free((*tx_pkts)->next);
+    (*tx_pkts)->next = NULL;
+    rte_mbuf_raw_free((*tx_pkts));
+  }
 
   return 1;
 }
