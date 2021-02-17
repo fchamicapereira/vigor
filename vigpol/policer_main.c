@@ -18,7 +18,6 @@
 #include "nf-rss.h"
 
 #define CHECK_WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (*(write_attempt_ptr) && !*(write_state_ptr)) { return 1; }})
-
 #define WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (!*(write_state_ptr)) { *(write_attempt_ptr) = true; return 1; }})
 
 struct nf_config config;

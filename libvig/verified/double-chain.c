@@ -22,7 +22,7 @@ RTE_DECLARE_PER_LCORE(bool, write_attempt);
 RTE_DECLARE_PER_LCORE(bool, write_state);
 
 struct DoubleChain {
-  struct dchain_cell* cells[RTE_MAX_LCORE];
+  struct dchain_cell* cells;
   vigor_time_t *timestamps[RTE_MAX_LCORE];
 };
 
@@ -130,7 +130,7 @@ int dchain_allocate(int index_range, struct DoubleChain** chain_out)
 {
 
   struct DoubleChain* old_chain_out = *chain_out;
-  struct DoubleChain* chain_alloc = (struct DoubleChain*) rte_malloc_socket(NULL, sizeof(struct DoubleChain), 0, rte_socket_id());
+  struct DoubleChain* chain_alloc = (struct DoubleChain*) rte_malloc(NULL, sizeof(struct DoubleChain), 0);
   if (chain_alloc == NULL) return 0;
   *chain_out = (struct DoubleChain*) chain_alloc;
 
@@ -140,21 +140,21 @@ int dchain_allocate(int index_range, struct DoubleChain** chain_out)
     mul_bounds(sizeof (struct dchain_cell), 1024,
                (index_range + DCHAIN_RESERVED), IRANG_LIMIT + DCHAIN_RESERVED);
     @*/
+  struct dchain_cell* cells_alloc =
+    (struct dchain_cell*) rte_malloc(NULL, sizeof (struct dchain_cell)*(index_range + DCHAIN_RESERVED), 0);
+  if (cells_alloc == NULL) {
+    rte_free(chain_alloc);
+    *chain_out = old_chain_out;
+    return 0;
+  }
+  (*chain_out)->cells = cells_alloc;
+
   unsigned lcore_id;
   RTE_LCORE_FOREACH(lcore_id) {
-  struct dchain_cell* cells_alloc =
-      (struct dchain_cell*) rte_malloc_socket(NULL, sizeof (struct dchain_cell)*(index_range + DCHAIN_RESERVED), 0, rte_socket_id());
-    if (cells_alloc == NULL) {
-      free(chain_alloc);
-      *chain_out = old_chain_out;
-      return 0;
-    }
-    (*chain_out)->cells[lcore_id] = cells_alloc;
-
-    vigor_time_t* timestamps_alloc = (vigor_time_t*) rte_malloc_socket(NULL, sizeof(vigor_time_t)*(index_range), 0, rte_socket_id());
+    vigor_time_t* timestamps_alloc = (vigor_time_t*) rte_malloc(NULL, sizeof(vigor_time_t)*(index_range), 0);
     if (timestamps_alloc == NULL) {
-      free((void*)cells_alloc);
-      free(chain_alloc);
+      rte_free((void*)cells_alloc);
+      rte_free(chain_alloc);
       *chain_out = old_chain_out;
       return 0;
     }
@@ -163,9 +163,7 @@ int dchain_allocate(int index_range, struct DoubleChain** chain_out)
     
 
   //@ bytes_to_dcells(cells_alloc, nat_of_int(index_range + DCHAIN_RESERVED));
-  RTE_LCORE_FOREACH(lcore_id) {
-    dchain_impl_init((*chain_out)->cells[lcore_id], index_range);
-  }
+  dchain_impl_init((*chain_out)->cells, index_range);
   //@ close double_chainp(empty_dchain_fp(index_range, 0), chain_alloc);
   return 1;
 }
@@ -376,18 +374,26 @@ int dchain_allocate_new_index(struct DoubleChain* chain,
                0 <= ni &*& ni < dchain_index_range_fp(ch) &*&
                double_chainp(dchain_allocate_fp(ch, ni, time), chain)); @*/
 {
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
   //@ open double_chainp(ch, chain);
   //@ assert chain->cells |-> ?cells;
   //@ assert chain->timestamps |-> ?timestamps;
   //@ assert dchainip(?chi, cells);
   //@ assert times(timestamps, dchain_index_range_fp(ch), ?tstmps);
   //@ insync_both_out_of_space(chi, ch, tstmps);
-  unsigned int lcore_id = rte_lcore_id();
-  int ret = dchain_impl_allocate_new_index(chain->cells[lcore_id], index_out);
+  if (!*write_state) {
+    *write_attempt = true;
+    return 1;
+  }
+  int ret = dchain_impl_allocate_new_index(chain->cells, index_out);
   //@ assert *index_out |-> ?ni;
   if (ret) {
     //@ extract_timestamp(timestamps, tstmps, ni);
-    chain->timestamps[lcore_id][*index_out] = time;
+    unsigned int lcore_id;
+    RTE_LCORE_FOREACH(lcore_id) {
+      chain->timestamps[lcore_id][*index_out] = time;
+    }
     //@ take_update_unrelevant(ni, ni, time, tstmps);
     //@ drop_update_unrelevant(ni+1, ni, time, tstmps);
     //@ glue_timestamp(timestamps, update(ni, time, tstmps), ni);
@@ -648,8 +654,7 @@ int dchain_rejuvenate_index(struct DoubleChain* chain,
   //@ assert times(timestamps, size, ?tmstmps);
 
   //@ dc_alist_no_dups(chi, index);
-  unsigned int lcore_id = rte_lcore_id();
-  int ret = dchain_impl_rejuvenate_index(chain->cells[lcore_id], index);
+  int ret = dchain_impl_rejuvenate_index(chain->cells, index);
   //@ dchaini_allocated_def(chi, index);
   /*@ insync_mem_exists_same_index(dchaini_alist_fp(chi),
                                    dchain_alist_fp(ch), tmstmps, index);
@@ -657,7 +662,7 @@ int dchain_rejuvenate_index(struct DoubleChain* chain,
   //@ dchain_allocated_def(ch, index);
   if (ret) {
     //@ extract_timestamp(timestamps, tmstmps, index);
-    chain->timestamps[lcore_id][index] = time;
+    chain->timestamps[rte_lcore_id()][index] = time;
     //@ take_update_unrelevant(index, index, time, tmstmps);
     //@ drop_update_unrelevant(index+1, index, time, tmstmps);
     //@ glue_timestamp(timestamps, update(index, time, tmstmps), index);
@@ -811,7 +816,7 @@ int dchain_expire_one_index(struct DoubleChain* chain,
   //@ assert dchainip(?chi, cells);
   //@ int size = dchain_index_range_fp(ch);
   //@ assert times(timestamps, size, ?tmstmps);
-  int has_ind = dchain_impl_get_oldest_index(chain->cells[lcore_id], index_out);
+  int has_ind = dchain_impl_get_oldest_index(chain->cells, index_out);
   //@ is_empty_def(ch, chi);
   //@ insync_both_empty(dchaini_alist_fp(chi), tmstmps, dchain_alist_fp(ch));
   //@ assert dchaini_is_empty_fp(chi) == dchain_is_empty_fp(ch);
@@ -831,8 +836,7 @@ int dchain_expire_one_index(struct DoubleChain* chain,
 
       unsigned int lcore_id_iterator;
       RTE_LCORE_FOREACH(lcore_id_iterator) {
-        if (lcore_id_iterator == lcore_id ||
-            !dchain_impl_is_index_allocated(chain->cells[lcore_id_iterator], *index_out)) {
+        if (lcore_id_iterator == lcore_id) {
           continue;
         }
         
@@ -842,7 +846,7 @@ int dchain_expire_one_index(struct DoubleChain* chain,
         }
       }
 
-      int rez = dchain_impl_free_index(chain->cells[lcore_id], *index_out);
+      int rez = dchain_impl_free_index(chain->cells, *index_out);
       /*@
         {
           assert rez == 1;
@@ -902,7 +906,7 @@ int dchain_is_index_allocated(struct DoubleChain* chain, int index)
         }
     }
     @*/
-  return dchain_impl_is_index_allocated(chain->cells[rte_lcore_id()], index);
+  return dchain_impl_is_index_allocated(chain->cells, index);
   //@ close double_chainp(ch, chain);
 }
 
@@ -931,7 +935,7 @@ int dchain_free_index(struct DoubleChain* chain, int index)
         }
     }
   @*/
-  return dchain_impl_free_index(chain->cells[rte_lcore_id()], index);
+  return dchain_impl_free_index(chain->cells, index);
   /*@
     if (dchain_allocated_fp(ch, index)) {
       remove_def(ch, chi, index);
