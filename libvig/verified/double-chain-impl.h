@@ -186,6 +186,7 @@ int dchain_impl_get_oldest_index(struct dchain_cell *cells, int *index);
               true == dchaini_allocated_fp(dc, oi) &*&
               result == 1)); @*/
 
+int dchain_impl_reposition_index(struct dchain_cell *cells, int index, int new_prev_index);
 int dchain_impl_rejuvenate_index(struct dchain_cell *cells, int index);
 /*@ requires dchainip(?dc, cells) &*&
              0 <= index &*& index < dchaini_irange_fp(dc); @*/
@@ -200,5 +201,8 @@ int dchain_impl_is_index_allocated(struct dchain_cell *cells, int index);
              0 <= index &*& index < dchaini_irange_fp(dc); @*/
 /*@ ensures dchainip(dc, cells) &*&
             dchaini_allocated_fp(dc, index) ? result == 1 : result == 0; @*/
+
+void dchain_impl_assert(struct dchain_cell *cells, unsigned lcore, int range, int before);
+void dchain_impl_print(struct dchain_cell *cells, unsigned lcore);
 
 #endif //_DOUBLE_CHAIN_IMPL_H_INCLUDED_
