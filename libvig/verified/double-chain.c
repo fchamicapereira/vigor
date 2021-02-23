@@ -872,7 +872,6 @@ int dchain_expire_one_index(struct DoubleChain* chain,
   bool* write_state = &RTE_PER_LCORE(write_state);
   
   unsigned int this_lcore_id = rte_lcore_id();
-  unsigned int lcore_id;
   //@ open double_chainp(ch, chain);
   //@ assert chain->cells |-> ?cells;
   //@ assert chain->timestamps |-> ?timestamps;
@@ -898,11 +897,8 @@ int dchain_expire_one_index(struct DoubleChain* chain,
         return 1;
       }
 
+      unsigned int lcore_id;
       RTE_LCORE_FOREACH(lcore_id) {
-        if (lcore_id == this_lcore_id) {
-          continue;
-        }
-        
         if (chain->timestamps[lcore_id][*index_out] >= time) {
           return dchain_update_timestamp(chain, *index_out, chain->timestamps[lcore_id][*index_out]);
         }
@@ -1006,11 +1002,15 @@ int dchain_free_index(struct DoubleChain* chain, int index)
 
   int rez = -1;
   unsigned lcore_id;
+
+  int last_rez_lcore = -1;
   
   RTE_LCORE_FOREACH(lcore_id) {
     int new_rez = dchain_impl_free_index(chain->cells[lcore_id], index);
+
     assert(new_rez == rez || rez == -1);
     rez = new_rez;
+    last_rez_lcore = lcore_id;
   }
 
   return rez;

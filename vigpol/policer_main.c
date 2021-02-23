@@ -108,7 +108,7 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
     return fwd;
   } else {
     if (size > config.burst) {
-      NF_DEBUG("  Unknown flow with packet larger than burst size. Dropping.");
+      //NF_DEBUG("  Unknown flow with packet larger than burst size. Dropping.");
       return false;
     }
 
@@ -117,7 +117,7 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
     int allocated =
         dchain_allocate_new_index(dynamic_ft->dyn_heap, &index, time);
     if (!allocated) {
-      NF_DEBUG("No more space in the policer table");
+      //NF_DEBUG("No more space in the policer table");
       return false;
     }
     uint32_t *key;
@@ -132,7 +132,7 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
     vector_return(dynamic_ft->dyn_keys, index, key);
     vector_return(dynamic_ft->dyn_vals, index, value);
 
-    NF_DEBUG("  New flow. Forwarding.");
+    //NF_DEBUG("  New flow. Forwarding.");
     return true;
   }
 }
@@ -167,7 +167,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
 
   if (device == config.lan_device) {
     // Simply forward outgoing packets.
-    NF_DEBUG("Outgoing packet. Not policing.");
+    //NF_DEBUG("Outgoing packet. Not policing.");
     return config.wan_device;
   } else if (device == config.wan_device) {
     // Police incoming packets.
@@ -176,15 +176,15 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     CHECK_WRITE_ATTEMPT(write_attempt, write_state);
 
     if (fwd) {
-      NF_DEBUG("Incoming packet within policed rate. Forwarding.");
+      //NF_DEBUG("Incoming packet within policed rate. Forwarding.");
       return config.lan_device;
     } else {
-      NF_DEBUG("Incoming packet outside of policed rate. Dropping.");
+      //NF_DEBUG("Incoming packet outside of policed rate. Dropping.");
       return config.wan_device;
     }
   } else {
     // Drop any other packets.
-    NF_DEBUG("Unknown port. Dropping.");
+    //NF_DEBUG("Unknown port. Dropping.");
     return device;
   }
 }

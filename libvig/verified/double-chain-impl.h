@@ -202,7 +202,4 @@ int dchain_impl_is_index_allocated(struct dchain_cell *cells, int index);
 /*@ ensures dchainip(dc, cells) &*&
             dchaini_allocated_fp(dc, index) ? result == 1 : result == 0; @*/
 
-void dchain_impl_assert(struct dchain_cell *cells, unsigned lcore, int range, int before);
-void dchain_impl_print(struct dchain_cell *cells, unsigned lcore);
-
 #endif //_DOUBLE_CHAIN_IMPL_H_INCLUDED_

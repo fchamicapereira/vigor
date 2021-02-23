@@ -23,14 +23,16 @@ RTE_DEFINE_PER_LCORE(bool, write_state);
 
 nf_lock_t nf_lock;
 
+void nf_util_init_locks() {
+  nf_lock_init(&nf_lock);
+}
+
 void nf_util_init() {
   size_t *chunks_borrowed_num_ptr = &RTE_PER_LCORE(chunks_borrowed_num);
   void** *chunks_borrowed_ptr = &RTE_PER_LCORE(chunks_borrowed);
 
   (*chunks_borrowed_num_ptr) = 0;
   (*chunks_borrowed_ptr) = (void**) malloc(sizeof(void*) * MAX_N_CHUNKS);
-
-  nf_lock_init(&nf_lock);
 }
 
 bool nf_has_ipv4_header(struct ether_hdr *header) {

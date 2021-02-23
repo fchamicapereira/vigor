@@ -321,6 +321,8 @@ int MAIN(int argc, char *argv[]) {
 
   // ... UNTIL NOW
 
+  nf_util_init_locks();
+
   // call on each lcore
   RTE_LCORE_FOREACH_SLAVE(lcore_id) {
     rte_eal_remote_launch((lcore_function_t *)lcore_main, NULL, lcore_id);
