@@ -4,9 +4,11 @@
 #include "nf-util.h"
 #include "nf-rss.h"
 
+#include <rte_atomic.h>
+
 struct nf_config config;
 
-RTE_DEFINE_PER_LCORE(uint64_t, counter);
+rte_atomic32_t counter;
 
 uint8_t hash_key[RSS_HASH_KEY_LENGTH] = {
   0xf2, 0xb8, 0x5f, 0xb0, 0x71, 0x0e, 0x98, 0xf5, 
@@ -32,6 +34,7 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
 };
 
 bool nf_init(void) {
+  rte_atomic32_init(&counter);
   return true;
 }
 
@@ -46,8 +49,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     dst_device = config.wan_device;
   }
 
-  uint64_t *counter_ptr = &RTE_PER_LCORE(counter);
-  (*counter_ptr)++;
+  rte_atomic32_inc(&counter);
 
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
   ether_header->s_addr = config.device_macs[dst_device];
