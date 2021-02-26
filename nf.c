@@ -164,11 +164,13 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
     return retval;
   }
 
+  /*
   if (rte_lcore_count() > 1) {
     uint16_t reta[ETH_RSS_RETA_SIZE_512];
     reta_from_file(reta);
     set_reta(device, reta);
   }
+  */
 
   return 0;
 }
