@@ -463,6 +463,6 @@ int dchain_free_index(struct DoubleChain* chain, int index);
               new_ch == dchain_remove_index_fp(ch, index) &*&
               false == dchain_out_of_space_fp(new_ch)) :
              (result == 0 &*& new_ch == ch); @*/
-
+void dchain_print(struct DoubleChain* chain);
 
 #endif //_DOUBLE_CHAIN_H_INCLUDED_

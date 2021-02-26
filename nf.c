@@ -251,7 +251,7 @@ static void lcore_main(void) {
       }
 
       #ifdef ENABLE_LOG
-      if (packets >= 1e6) {
+      if (packets >= 1e5) {
         NF_DEBUG("[%u] %"PRIu64"/%"PRIu64" (%"PRIu64"%%)", lcore_id, write_packets, packets, 100 * write_packets / packets);
         write_packets = packets = 0;
       }

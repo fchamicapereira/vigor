@@ -68,6 +68,7 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
   int index = -1;
   int present = map_get(dynamic_ft->dyn_map, &dst, &index);
   if (present) {
+    WRITE_ATTEMPT(write_attempt, write_state);
     dchain_rejuvenate_index(dynamic_ft->dyn_heap, index, time);
 
     struct DynamicValue *value = 0;
@@ -80,7 +81,7 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
     assert(value->bucket_time <= time_u);
     uint64_t time_diff = time_u - value->bucket_time;
     if (time_diff <
-        config.burst * VIGOR_TIME_SECONDS_MULTIPLIER / config.rate) {
+        (config.burst / config.rate) * VIGOR_TIME_SECONDS_MULTIPLIER) {
       uint64_t added_tokens =
           time_diff * config.rate / VIGOR_TIME_SECONDS_MULTIPLIER;
 #pragma GCC diagnostic push
@@ -108,7 +109,7 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
     return fwd;
   } else {
     if (size > config.burst) {
-      //NF_DEBUG("  Unknown flow with packet larger than burst size. Dropping.");
+      NF_DEBUG("  Unknown flow with packet larger than burst size. Dropping.");
       return false;
     }
 
@@ -117,7 +118,7 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
     int allocated =
         dchain_allocate_new_index(dynamic_ft->dyn_heap, &index, time);
     if (!allocated) {
-      //NF_DEBUG("No more space in the policer table");
+      NF_DEBUG("No more space in the policer table");
       return false;
     }
     uint32_t *key;
@@ -167,7 +168,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
 
   if (device == config.lan_device) {
     // Simply forward outgoing packets.
-    //NF_DEBUG("Outgoing packet. Not policing.");
+    NF_DEBUG("Outgoing packet. Not policing.");
     return config.wan_device;
   } else if (device == config.wan_device) {
     // Police incoming packets.
@@ -179,12 +180,12 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
       //NF_DEBUG("Incoming packet within policed rate. Forwarding.");
       return config.lan_device;
     } else {
-      //NF_DEBUG("Incoming packet outside of policed rate. Dropping.");
+      NF_DEBUG("Incoming packet outside of policed rate. Dropping.");
       return config.wan_device;
     }
   } else {
     // Drop any other packets.
-    //NF_DEBUG("Unknown port. Dropping.");
+    NF_DEBUG("Unknown port. Dropping.");
     return device;
   }
 }

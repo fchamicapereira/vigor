@@ -12,6 +12,53 @@ enum DCHAIN_ENUM {
     INDEX_SHIFT = DCHAIN_RESERVED
 };
 
+void dchain_impl_print(struct dchain_cell *cells, unsigned lcore) {
+  struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
+  struct dchain_cell *fr_head = cells + FREE_LIST_HEAD;
+
+  if (al_head->next == ALLOC_LIST_HEAD) {
+    assert(al_head->prev == al_head->next);
+  }
+
+  if (fr_head->next == FREE_LIST_HEAD) {
+    assert(fr_head->prev == fr_head->next);
+  }
+
+  int index;
+
+  printf("[%u] ALLOC ", lcore);
+  struct dchain_cell *cell = al_head;
+
+  while (1) {
+    int next = cell->next;
+
+    if (next == ALLOC_LIST_HEAD) {
+      printf("-> ALLOC\n");
+      break;
+    } else {
+      printf("-> %d ", next - INDEX_SHIFT);
+    }
+
+    cell = cells + next;
+  }
+
+  printf("[%u] FREE ", lcore);
+  cell = fr_head;
+
+  while (1) {
+    int next = cell->next;
+
+    if (next == FREE_LIST_HEAD) {
+      printf("-> FREE\n");
+      break;
+    } else {
+      printf("-> %d ", next - INDEX_SHIFT);
+    }
+
+    cell = cells + next;
+  }
+}
+
 /*@
 
   predicate free_listp(list<dcell> cells, list<int> fl, int start, int cur) =

@@ -12,6 +12,9 @@
 
 #include "state.h"
 
+#define CHECK_WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (*(write_attempt_ptr) && !*(write_state_ptr)) { return; }})
+#define WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (!*(write_state_ptr)) { *(write_attempt_ptr) = true; return; }})
+
 struct FlowManager {
   struct State *state;
   vigor_time_t expiration_time; /*seconds*/
@@ -50,6 +53,11 @@ void flow_manager_allocate_or_refresh_flow(struct FlowManager *manager,
     return;
   }
 
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+
+  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
+
   struct FlowId *key = 0;
   vector_borrow(manager->state->fv, index, (void **)&key);
   memcpy((void *)key, (void *)id, sizeof(struct FlowId));
@@ -76,12 +84,6 @@ bool flow_manager_get_refresh_flow(struct FlowManager *manager,
   int index;
   if (map_get(manager->state->fm, id, &index) == 0) {
     return false;
-  }
-  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
-  bool* write_state = &RTE_PER_LCORE(write_state);
-  if (!*write_state) {
-    *write_attempt = true;
-    return 1;
   }
   uint32_t *int_dev;
   vector_borrow(manager->state->int_devices, index, (void **)&int_dev);

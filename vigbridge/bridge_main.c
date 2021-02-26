@@ -27,6 +27,9 @@
 #include "state.h"
 #include "nf-rss.h"
 
+#define CHECK_WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (*(write_attempt_ptr) && !*(write_state_ptr)) { return 1; }})
+#define WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (!*(write_state_ptr)) { *(write_attempt_ptr) = true; return; }})
+
 struct nf_config config;
 
 uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
@@ -62,12 +65,9 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
   }
 };
 
-RTE_DEFINE_PER_LCORE(struct State *, _mac_tables);
+struct State * mac_tables;
 
 int bridge_expire_entries(vigor_time_t time) {
-  struct State ** mac_tables_ptr = &RTE_PER_LCORE(_mac_tables);
-  struct State *mac_tables = (*mac_tables_ptr);
-
   assert(time >= 0); // we don't support the past
   assert(sizeof(vigor_time_t) <= sizeof(uint64_t));
   uint64_t time_u = (uint64_t)time; // OK because of the two asserts
@@ -77,9 +77,6 @@ int bridge_expire_entries(vigor_time_t time) {
 }
 
 int bridge_get_device(struct ether_addr *dst, uint16_t src_device) {
-  struct State ** mac_tables_ptr = &RTE_PER_LCORE(_mac_tables);
-  struct State *mac_tables = (*mac_tables_ptr);
-
   int device = -1;
   struct StaticKey k;
   memcpy(&k.addr, dst, sizeof(struct ether_addr));
@@ -106,8 +103,8 @@ int bridge_get_device(struct ether_addr *dst, uint16_t src_device) {
 
 void bridge_put_update_entry(struct ether_addr *src, uint16_t src_device,
                              vigor_time_t time) {
-  struct State ** mac_tables_ptr = &RTE_PER_LCORE(_mac_tables);
-  struct State *mac_tables = (*mac_tables_ptr);
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
 
   int index = -1;
   int hash = ether_addr_hash(src);
@@ -115,6 +112,9 @@ void bridge_put_update_entry(struct ether_addr *src, uint16_t src_device,
   if (present) {
     dchain_rejuvenate_index(mac_tables->dyn_heap, index, time);
   } else {
+    NF_DEBUG("NEW ENTRY");
+    WRITE_ATTEMPT(write_attempt, write_state);
+
     int allocated =
         dchain_allocate_new_index(mac_tables->dyn_heap, &index, time);
     if (!allocated) {
@@ -298,41 +298,42 @@ static void read_static_ft_from_array(struct Map *stat_map,
 
 #endif // KLEE_VERIFICATION
 
-bool nf_init(void) {
-  struct State ** mac_tables_ptr = &RTE_PER_LCORE(_mac_tables);
 
+bool nf_init(void) {
   unsigned stat_capacity = 8192; // Has to be power of 2
   unsigned capacity = config.dyn_capacity;
   assert(stat_capacity < CAPACITY_UPPER_LIMIT - 1);
 
-  (*mac_tables_ptr) = alloc_state(capacity, stat_capacity, rte_eth_dev_count());
-  if ((*mac_tables_ptr) == NULL) {
+  if (mac_tables != NULL) {
+    return true;
+  }
+
+  mac_tables = alloc_state(capacity, stat_capacity, rte_eth_dev_count());
+  if (mac_tables == NULL) {
     return false;
   }
 #ifdef NFOS
-  read_static_ft_from_array((*mac_tables_ptr)->st_map, (*mac_tables_ptr)->st_vec,
+  read_static_ft_from_array(mac_tables->st_map, mac_tables->st_vec,
                             stat_capacity);
 #else
-  read_static_ft_from_file((*mac_tables_ptr)->st_map, (*mac_tables_ptr)->st_vec,
+  read_static_ft_from_file(mac_tables->st_map, mac_tables->st_vec,
                            stat_capacity);
 #endif
   return true;
 }
 
+
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
   bool* write_attempt = &RTE_PER_LCORE(write_attempt);
   bool* write_state = &RTE_PER_LCORE(write_state);
 
-  // always writes
-  if (!*write_state) {
-    *write_attempt = 1;
-    return 1;
-  }
-
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
 
   bridge_expire_entries(now);
+  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
+
   bridge_put_update_entry(&ether_header->s_addr, device, now);
+  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
 
   int forward_to = bridge_get_device(&ether_header->d_addr, device);
 

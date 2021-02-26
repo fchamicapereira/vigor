@@ -8,6 +8,9 @@
 #include "nf-util.h"
 #include "nf-rss.h"
 
+#define CHECK_WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (*(write_attempt_ptr) && !*(write_state_ptr)) { return 1; }})
+#define WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (!*(write_state_ptr)) { *(write_attempt_ptr) = true; return; }})
+
 struct nf_config config;
 
 uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
@@ -43,29 +46,25 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
   }
 };
 
-RTE_DEFINE_PER_LCORE(struct FlowManager *, _flow_manager);
+struct FlowManager * flow_manager;
 
 bool nf_init(void) {
-  struct FlowManager ** flow_manager_ptr = &RTE_PER_LCORE(_flow_manager);
-  (*flow_manager_ptr) = flow_manager_allocate(
+  if (rte_get_master_lcore() != rte_lcore_id()) {
+    return true;
+  }
+
+  flow_manager = flow_manager_allocate(
       config.wan_device, config.expiration_time, config.max_flows);
-  return (*flow_manager_ptr) != NULL;
+  return flow_manager != NULL;
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
   bool* write_attempt = &RTE_PER_LCORE(write_attempt);
   bool* write_state = &RTE_PER_LCORE(write_state);
 
-  struct FlowManager ** flow_manager_ptr = &RTE_PER_LCORE(_flow_manager);
-  struct FlowManager *flow_manager = (*flow_manager_ptr);
-
-  NF_DEBUG("It is %" PRId64, now);
-
   flow_manager_expire(flow_manager, now);
-  NF_DEBUG("Flows have been expired");
-  if (*write_attempt && !*write_state) {
-    return 1;
-  }
+  // NF_DEBUG("Flows have been expired");
+  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
 
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
   uint8_t *ip_options;
@@ -83,7 +82,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     return device;
   }
 
-  NF_DEBUG("Forwarding an IPv4 packet on device %" PRIu16, device);
+  // NF_DEBUG("Forwarding an IPv4 packet on device %" PRIu16, device);
 
   uint16_t dst_device;
   if (device == config.wan_device) {
@@ -102,9 +101,6 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
       NF_DEBUG("Unknown external flow, dropping");
       return device;
     }
-    if (*write_attempt && !*write_state) {
-      return 1;
-    }
     dst_device = dst_device_long;
   } else {
     struct FlowId id = {
@@ -114,19 +110,13 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
       .dst_ip = ipv4_header->dst_addr,
       .protocol = ipv4_header->next_proto_id,
     };
-    if (!*write_state) {
-      *write_attempt = true;
-      return 1;
-    }
     flow_manager_allocate_or_refresh_flow(flow_manager, &id, device, now);
+    CHECK_WRITE_ATTEMPT(write_attempt, write_state);
     dst_device = config.wan_device;
   }
 
   concretize_devices(&dst_device, rte_eth_dev_count());
-  if (!*write_state) {
-    *write_attempt = true;
-    return 1;
-  }
+  
   ether_header->s_addr = config.device_macs[dst_device];
   ether_header->d_addr = config.endpoint_macs[dst_device];
 

@@ -195,7 +195,7 @@ int dchain_impl_rejuvenate_index(struct dchain_cell *cells, int index);
               result == 1) :
              (dchainip(dc, cells) &*&
               result == 0)); @*/
-
+void dchain_impl_print(struct dchain_cell *cells, unsigned lcore);
 int dchain_impl_is_index_allocated(struct dchain_cell *cells, int index);
 /*@ requires dchainip(?dc, cells) &*&
              0 <= index &*& index < dchaini_irange_fp(dc); @*/
