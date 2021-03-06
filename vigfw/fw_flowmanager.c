@@ -56,7 +56,7 @@ void flow_manager_allocate_or_refresh_flow(struct FlowManager *manager,
   bool* write_attempt = &RTE_PER_LCORE(write_attempt);
   bool* write_state = &RTE_PER_LCORE(write_state);
 
-  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
+  WRITE_ATTEMPT(write_attempt, write_state);
 
   struct FlowId *key = 0;
   vector_borrow(manager->state->fv, index, (void **)&key);

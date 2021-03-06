@@ -178,11 +178,6 @@ static int nf_init_device(uint16_t device, struct rte_mempool** mbuf_pools) {
 static void lcore_main(void) {
   const unsigned lcore_id = rte_lcore_id();
   const uint16_t queue_id = lcores_conf[lcore_id].queue_id;
-  
-  #ifdef ENABLE_LOG
-  uint64_t packets = 0;
-  uint64_t write_packets = 0;
-  #endif
 
   for (uint16_t device = 0; device < rte_eth_dev_count(); device++) {
     if (rte_eth_dev_socket_id(device) > 0 &&
@@ -202,6 +197,9 @@ static void lcore_main(void) {
   bool* write_attempt = &RTE_PER_LCORE(write_attempt);
   bool* write_state = &RTE_PER_LCORE(write_state);
 
+  uint64_t* expires = &RTE_PER_LCORE(expires);
+  uint64_t last_time = 0;
+
   NF_INFO("Core %u using queue %u forwarding packets.", lcore_id, (unsigned)queue_id);
 
   VIGOR_LOOP_BEGIN
@@ -214,10 +212,6 @@ static void lcore_main(void) {
     for (uint16_t rx_id = 0; rx_id < nb_rx; rx_id++) {
       nf_update_packet_state_total_length(mbuf, rx_id);
       uint8_t* packet = rte_pktmbuf_mtod(mbuf[rx_id], uint8_t*);
-      
-      #ifdef ENABLE_LOG
-      packets++;
-      #endif
 
       *write_attempt = false;
       *write_state = false;
@@ -228,14 +222,11 @@ static void lcore_main(void) {
 
       if (*write_attempt) {
         *write_state = true;
-        
-        #ifdef ENABLE_LOG
-        write_packets++;
-        #endif
 
         nf_lock_write_lock(&nf_lock);
         uint16_t dst_device = nf_process(mbuf[rx_id]->port, packet, mbuf[rx_id]->data_len, VIGOR_NOW);
         nf_lock_write_unlock(&nf_lock);
+
         nf_return_all_chunks(packet);
       } else {
         nf_lock_allow_writes(&nf_lock);
@@ -249,14 +240,19 @@ static void lcore_main(void) {
         concretize_devices(&dst_device, rte_eth_dev_count());
         nf_send_packet(mbuf[rx_id], dst_device, queue_id);
       }
-
-      #ifdef ENABLE_LOG
-      if (packets >= 1e5) {
-        NF_DEBUG("[%u] %"PRIu64"/%"PRIu64" (%"PRIu64"%%)", lcore_id, write_packets, packets, 100 * write_packets / packets);
-        write_packets = packets = 0;
-      }
-      #endif
     }
+
+    #ifdef ENABLE_LOG
+    if (last_time > 0 && VIGOR_NOW - last_time >= 1e9) {
+      printf("[%u] expires %"PRIu64"\n", lcore_id, *expires);
+      *expires = 0;
+    }
+
+    if (last_time <= 0 || VIGOR_NOW - last_time >= 1e9) {
+      last_time = VIGOR_NOW;
+    }
+    #endif
+
   VIGOR_LOOP_END
 }
 

@@ -189,7 +189,7 @@ int expire_items_single_map/*@ <kt> @*/(struct DoubleChain* chain,
       *write_attempt = true;
       return 1;
     }
-    
+
     /*@ mvc_coherent_bounds(cur_m, cur_v, cur_ch);
       @*/
     //@ dchain_oldest_allocated(cur_ch);

@@ -24,7 +24,7 @@ typedef struct {
 static inline void
 nf_lock_init(nf_lock_t *nfl)
 {
-  nfl->tokens = (rte_atomic32_t*) rte_malloc(NULL, sizeof(rte_atomic32_t) * RTE_MAX_LCORE, 64);
+  nfl->tokens = (rte_atomic32_t*) rte_malloc(NULL, sizeof(rte_atomic32_t) * RTE_MAX_LCORE, 0);
 
 	unsigned lcore_id;
 	RTE_LCORE_FOREACH(lcore_id) {

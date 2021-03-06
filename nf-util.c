@@ -18,6 +18,14 @@
 RTE_DEFINE_PER_LCORE(void **, chunks_borrowed);
 RTE_DEFINE_PER_LCORE(size_t, chunks_borrowed_num);
 
+//uint64_t packets[RTE_MAX_LCORE];
+//uint64_t write_packets[RTE_MAX_LCORE];
+//
+//uint64_t frees[RTE_MAX_LCORE];
+//uint64_t repositions[RTE_MAX_LCORE];
+
+RTE_DEFINE_PER_LCORE(uint64_t, expires);
+
 RTE_DEFINE_PER_LCORE(bool, write_attempt);
 RTE_DEFINE_PER_LCORE(bool, write_state);
 
@@ -30,6 +38,15 @@ void nf_util_init_locks() {
 void nf_util_init() {
   size_t *chunks_borrowed_num_ptr = &RTE_PER_LCORE(chunks_borrowed_num);
   void** *chunks_borrowed_ptr = &RTE_PER_LCORE(chunks_borrowed);
+
+  uint64_t* expires = &RTE_PER_LCORE(expires);
+  *expires = 0;
+
+  //packets[rte_lcore_id()] = 0;
+  //write_packets[rte_lcore_id()] = 0;
+  //
+  //frees[rte_lcore_id()] = 0;
+  //repositions[rte_lcore_id()] = 0;
 
   (*chunks_borrowed_num_ptr) = 0;
   (*chunks_borrowed_ptr) = (void**) malloc(sizeof(void*) * MAX_N_CHUNKS);

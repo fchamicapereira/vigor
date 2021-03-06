@@ -59,6 +59,175 @@ void dchain_impl_print(struct dchain_cell *cells, unsigned lcore) {
   }
 }
 
+void dchain_impl_assert(struct dchain_cell *cells, unsigned lcore, int range, int before) {
+  struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
+  struct dchain_cell *fr_head = cells + FREE_LIST_HEAD;
+
+  if (al_head->next == ALLOC_LIST_HEAD) {
+    assert(!before || al_head->prev == al_head->next);
+    assert(before || al_head->prev == al_head->next);
+  }
+
+  if (fr_head->next == FREE_LIST_HEAD) {
+    assert(!before || fr_head->prev == fr_head->next);
+    assert(before || fr_head->prev == fr_head->next);
+  }
+
+  int* indexes = (int*) malloc(sizeof(int) * range);
+
+  for (int i = 0; i < range; i++) {
+    indexes[i] = 0;
+  }
+
+  struct dchain_cell *cell = al_head;
+  int current = ALLOC_LIST_HEAD;
+
+  while (1) {
+    int next = cell->next;
+    assert(!before || next != FREE_LIST_HEAD);
+    assert(before || next != FREE_LIST_HEAD);
+
+    struct dchain_cell *nextp = cells + next;
+    if (!(nextp->prev == current)) {
+      printf("[%d] next %d nextp->prev %d current %d\n", lcore, next - INDEX_SHIFT, nextp->prev - INDEX_SHIFT, current - INDEX_SHIFT);
+    }
+    assert(!before || nextp->prev == current);
+    assert(before || nextp->prev == current);
+
+    if (next == ALLOC_LIST_HEAD) {
+      break;
+    }
+    
+    assert(!before || next - INDEX_SHIFT < range);
+    assert(before || next - INDEX_SHIFT < range);
+
+    if (indexes[next - INDEX_SHIFT]) {
+      dchain_impl_print(cells, lcore);
+      printf("[%d] repeated index %d\n", lcore, next - INDEX_SHIFT);
+    }
+
+    assert(!before || !indexes[next - INDEX_SHIFT]);
+    assert(before || !indexes[next - INDEX_SHIFT]);
+
+    indexes[next - INDEX_SHIFT] = 1;
+    
+    current = next;
+    cell = cells + next;
+  }
+
+  cell = fr_head;
+
+  while (1) {
+    int next = cell->next;
+
+    assert(!before || cell->prev == cell->next);
+    assert(before || cell->prev == cell->next);
+
+    assert(!before || next != ALLOC_LIST_HEAD);
+    assert(before || next != ALLOC_LIST_HEAD);
+
+    if (next == FREE_LIST_HEAD) {
+      break;
+    }
+
+    assert(!before || next - INDEX_SHIFT < range);
+    assert(before || next - INDEX_SHIFT < range);
+
+    if (indexes[next - INDEX_SHIFT]) {
+      dchain_impl_print(cells, lcore);
+      printf("[%d] repeated index %d\n", lcore, next - INDEX_SHIFT);
+    }
+    assert(!before || !indexes[next - INDEX_SHIFT]);
+    assert(before || !indexes[next - INDEX_SHIFT]);
+
+    indexes[next - INDEX_SHIFT] = 1;
+
+    cell = cells + next;
+  }
+
+  for (int i = 0; i < range; i++) {
+    assert(!before || indexes[i]);
+    assert(before || indexes[i]);
+  }
+
+  free(indexes);
+}
+
+void dchain_impl_activity_init(struct dchain_cell *cells, int size)
+{
+  struct dchain_cell* al_head = cells + ALLOC_LIST_HEAD;
+  al_head->prev = ALLOC_LIST_HEAD;
+  al_head->next = ALLOC_LIST_HEAD;
+  int i = INDEX_SHIFT;
+
+  while (i < (size + INDEX_SHIFT))
+  {
+    struct dchain_cell* current = cells + i;
+    current->next = FREE_LIST_HEAD;
+    current->prev = current->next;
+    ++i;
+  }
+}
+
+int dchain_impl_activate_index(struct dchain_cell* cells, int index)
+{
+  int lifted = index + INDEX_SHIFT;
+
+  struct dchain_cell *liftedp = cells + lifted;
+
+  int lifted_next = liftedp->next;
+  int lifted_prev = liftedp->prev;
+  
+  // The index is already active.
+  if (lifted_next != FREE_LIST_HEAD) {
+    return 0;
+  }
+
+  struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
+  int al_head_prev = al_head->prev;
+  
+  liftedp->next = ALLOC_LIST_HEAD;
+  liftedp->prev = al_head_prev;
+  
+  struct dchain_cell *al_head_prevp = cells + al_head_prev;
+  al_head_prevp->next = lifted;
+  
+  al_head->prev = lifted;
+  
+  return 1;
+}
+
+int dchain_impl_deactivate_index(struct dchain_cell* cells, int index)
+{
+  int freed = index + INDEX_SHIFT;
+
+  struct dchain_cell* freedp = cells + freed;
+  int freed_prev = freedp->prev;
+  int freed_next = freedp->next;
+
+  // The index is already free.
+  if (freed_next == FREE_LIST_HEAD) {
+    return 0;
+  }
+   
+  struct dchain_cell* freed_prevp = cells + freed_prev;
+  freed_prevp->next = freed_next;
+
+  struct dchain_cell* freed_nextp = cells + freed_next;
+  freed_nextp->prev = freed_prev;
+  
+  freedp->next = FREE_LIST_HEAD;
+  freedp->prev = freedp->next;
+
+  return 1;
+}
+
+int dchain_impl_is_index_active(struct dchain_cell* cells, int index)
+{
+  struct dchain_cell* cell = cells + index + INDEX_SHIFT;
+  return cell->next != FREE_LIST_HEAD;
+}
+
 /*@
 
   predicate free_listp(list<dcell> cells, list<int> fl, int start, int cur) =
@@ -2154,6 +2323,18 @@ int dchain_impl_free_index(struct dchain_cell *cells, int index)
   }
   @*/
 
+int dchain_impl_next(struct dchain_cell *cells, int index, int *next)
+{
+  struct dchain_cell *cell = cells + index + INDEX_SHIFT;
+
+  if (cell->next == ALLOC_LIST_HEAD) {
+    return 0;
+  }
+
+  *next = cell->next - INDEX_SHIFT;
+  return 1;
+}
+
 int dchain_impl_get_oldest_index(struct dchain_cell *cells, int *index)
 /*@ requires dchainip(?dc, cells) &*& *index |-> ?i; @*/
 /*@ ensures dchainip(dc, cells) &*&
@@ -2240,6 +2421,7 @@ int dchain_impl_get_oldest_index(struct dchain_cell *cells, int *index)
 
 int dchain_impl_reposition_index(struct dchain_cell *cells, int index, int new_prev_index)
 {
+  assert(new_prev_index >= 0);
   int lifted = index + INDEX_SHIFT;
 
   struct dchain_cell *liftedp = cells + lifted;
@@ -2258,7 +2440,7 @@ int dchain_impl_reposition_index(struct dchain_cell *cells, int index, int new_p
   struct dchain_cell *lifted_nextp = cells + lifted_next;
   lifted_nextp->prev = lifted_prev;
 
-  int new_prev = new_prev_index >= 0 ? new_prev_index + INDEX_SHIFT : ALLOC_LIST_HEAD;
+  int new_prev = new_prev_index + INDEX_SHIFT;
   struct dchain_cell *new_prevp = cells + new_prev;
   int new_prev_next = new_prevp->next;
 

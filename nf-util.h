@@ -19,6 +19,14 @@
 
 #include "nf-locks.h"
 
+//extern uint64_t packets[RTE_MAX_LCORE];
+//extern uint64_t write_packets[RTE_MAX_LCORE];
+//
+//extern uint64_t frees[RTE_MAX_LCORE];
+//extern uint64_t repositions[RTE_MAX_LCORE];
+
+RTE_DECLARE_PER_LCORE(uint64_t, expires);
+
 RTE_DECLARE_PER_LCORE(bool, write_attempt);
 RTE_DECLARE_PER_LCORE(bool, write_state);
 

@@ -1,6 +1,8 @@
 #ifndef _DOUBLE_CHAIN_IMPL_H_INCLUDED_
 #define _DOUBLE_CHAIN_IMPL_H_INCLUDED_
 
+#include <stdbool.h>
+
 struct dchain_cell {
     int prev;
     int next;
@@ -174,6 +176,8 @@ int dchain_impl_free_index(struct dchain_cell *cells, int index);
              (dchainip(dc, cells) &*&
               result == 0)); @*/
 
+int dchain_impl_next(struct dchain_cell *cells, int index, int *next);
+
 int dchain_impl_get_oldest_index(struct dchain_cell *cells, int *index);
 /*@ requires dchainip(?dc, cells) &*& *index |-> ?i; @*/
 /*@ ensures dchainip(dc, cells) &*&
@@ -196,7 +200,14 @@ int dchain_impl_rejuvenate_index(struct dchain_cell *cells, int index);
              (dchainip(dc, cells) &*&
               result == 0)); @*/
 void dchain_impl_print(struct dchain_cell *cells, unsigned lcore);
+void dchain_impl_assert(struct dchain_cell *cells, unsigned lcore, int range, int before);
 int dchain_impl_is_index_allocated(struct dchain_cell *cells, int index);
+
+void dchain_impl_activity_init(struct dchain_cell *cells, int size);
+int dchain_impl_activate_index(struct dchain_cell* cells, int index);
+int dchain_impl_deactivate_index(struct dchain_cell* cells, int index);
+int dchain_impl_is_index_active(struct dchain_cell* cells, int index);
+
 /*@ requires dchainip(?dc, cells) &*&
              0 <= index &*& index < dchaini_irange_fp(dc); @*/
 /*@ ensures dchainip(dc, cells) &*&

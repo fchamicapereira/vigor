@@ -112,7 +112,6 @@ void bridge_put_update_entry(struct ether_addr *src, uint16_t src_device,
   if (present) {
     dchain_rejuvenate_index(mac_tables->dyn_heap, index, time);
   } else {
-    NF_DEBUG("NEW ENTRY");
     WRITE_ATTEMPT(write_attempt, write_state);
 
     int allocated =

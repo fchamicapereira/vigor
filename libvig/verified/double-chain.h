@@ -2,11 +2,22 @@
 #define _DOUBLE_CHAIN_H_INCLUDED_
 
 #include <stdint.h>
+#include <stdbool.h>
+#include <rte_lcore.h>
+#include <rte_per_lcore.h>
 
-#include "vigor-time.h"
+#include "libvig/verified/vigor-time.h"
 
 //@ #include <listex.gh>
 //@ #include "stdex.gh"
+
+RTE_DECLARE_PER_LCORE(bool, write_attempt);
+RTE_DECLARE_PER_LCORE(bool, write_state);
+
+RTE_DECLARE_PER_LCORE(uint64_t, expires);
+
+//extern uint64_t frees[RTE_MAX_LCORE];
+//extern uint64_t repositions[RTE_MAX_LCORE];
 
 struct DoubleChain;
 // Makes sure the allocator structur fits into memory, and particularly into

@@ -2,8 +2,6 @@
 
 #include <stdlib.h>
 #include <stddef.h>
-#include <stdbool.h>
-#include <assert.h>
 
 #include "double-chain-impl.h"
 
@@ -13,17 +11,14 @@
 
 #include "rte_malloc.h"
 #include "rte_lcore.h"
-#include <rte_per_lcore.h>
 
 #ifndef NULL
 #define NULL 0
 #endif//NULL
 
-RTE_DECLARE_PER_LCORE(bool, write_attempt);
-RTE_DECLARE_PER_LCORE(bool, write_state);
-
 struct DoubleChain {
   struct dchain_cell* cells[RTE_MAX_LCORE];
+  struct dchain_cell* active_cells[RTE_MAX_LCORE];
   vigor_time_t *timestamps[RTE_MAX_LCORE];
   int range;
 };
@@ -153,9 +148,21 @@ int dchain_allocate(int index_range, struct DoubleChain** chain_out)
     }
     (*chain_out)->cells[lcore_id] = cells_alloc;
 
+    struct dchain_cell* active_cells_alloc =
+      (struct dchain_cell*) rte_malloc(NULL, sizeof (struct dchain_cell)*(index_range + DCHAIN_RESERVED), 0);
+    if (active_cells_alloc == NULL) {
+      rte_free((void*)cells_alloc);
+      rte_free(chain_alloc);
+      *chain_out = old_chain_out;
+      return 0;
+    }
+    (*chain_out)->active_cells[lcore_id] = active_cells_alloc;
+    dchain_impl_activity_init((*chain_out)->active_cells[lcore_id], index_range);
+
     vigor_time_t* timestamps_alloc = (vigor_time_t*) rte_zmalloc(NULL, sizeof(vigor_time_t)*(index_range), 0);
     if (timestamps_alloc == NULL) {
       rte_free((void*)cells_alloc);
+      rte_free((void*)active_cells_alloc);
       rte_free(chain_alloc);
       *chain_out = old_chain_out;
       return 0;
@@ -428,6 +435,12 @@ int dchain_allocate_new_index(struct DoubleChain* chain,
     }
   }
 
+  if (ret) {
+    lcore_id = rte_lcore_id();
+    dchain_impl_activate_index(chain->active_cells[lcore_id], *index_out);
+    //printf("[%u] ALLOCATED %d\n", rte_lcore_id(), *index_out); fflush(stdout);
+  }
+
   return ret;
 }
 
@@ -683,6 +696,7 @@ int dchain_rejuvenate_index(struct DoubleChain* chain,
   if (ret) {
     //@ extract_timestamp(timestamps, tmstmps, index);
     chain->timestamps[lcore_id][index] = time;
+    dchain_impl_activate_index(chain->active_cells[lcore_id], index);
     //@ take_update_unrelevant(index, index, time, tmstmps);
     //@ drop_update_unrelevant(index+1, index, time, tmstmps);
     //@ glue_timestamp(timestamps, update(index, time, tmstmps), index);
@@ -814,111 +828,77 @@ int dchain_update_timestamp(struct DoubleChain* chain,
                             int index, vigor_time_t time)
 {
   unsigned int lcore_id = rte_lcore_id();
-  
-  int prev_index = -1;
-  vigor_time_t time_diff = -1;
 
-  for (int i = 0; i < chain->range; i++) {
-    if (i == index || chain->timestamps[lcore_id][i] < 0) {
-      continue;
-    }
-   
-    vigor_time_t new_time_diff = time - chain->timestamps[lcore_id][i];
+  int new_prev = -1;
+  int prev = index;
+  int next;
 
-    if (new_time_diff < 0) {
-      continue;
+  vigor_time_t prev_time = chain->timestamps[lcore_id][prev];
+  vigor_time_t next_time;
+
+  while (dchain_impl_next(chain->cells[lcore_id], prev, &next)) {
+    next_time = chain->timestamps[lcore_id][next];
+
+    if (prev_time <= time && time <= next_time && index != prev) {
+      new_prev = prev;
+      break;
     }
 
-    if (new_time_diff < time_diff || prev_index == -1) {
-      time_diff = new_time_diff;
-      prev_index = i;
-    }
+    prev = next;
+    prev_time = next_time;
   }
 
-  int ret = dchain_impl_reposition_index(chain->cells[lcore_id], index, prev_index);
+  int ret;
 
+  if (new_prev == -1) {
+    ret = dchain_impl_rejuvenate_index(chain->cells[lcore_id], index);
+  } else {
+    ret = dchain_impl_reposition_index(chain->cells[lcore_id], index, new_prev);
+  }
+
+  #ifdef ENABLE_LOG
   if (ret) {
     chain->timestamps[lcore_id][index] = time;
+    uint64_t* expires = &RTE_PER_LCORE(expires);
+    (*expires)++;
+    //printf("[%u] UPDATED %d new_prev %d\n", lcore_id, index, new_prev); fflush(stdout);
   }
+  #endif
 
   return ret;
 }
 
 int dchain_expire_one_index(struct DoubleChain* chain,
                             int* index_out, vigor_time_t time)
-/*@ requires double_chainp(?ch, chain) &*&
-             *index_out |-> ?io; @*/
-/*@ ensures (dchain_is_empty_fp(ch) ?
-             (double_chainp(ch, chain) &*&
-              *index_out |-> io &*&
-              result == 0) :
-              (*index_out |-> ?oi &*&
-               dchain_get_oldest_index_fp(ch) == oi &*&
-               0 <= oi &*& oi < dchain_index_range_fp(ch) &*&
-               (dchain_get_oldest_time_fp(ch) < time ?
-                (double_chainp(dchain_remove_index_fp(ch, oi), chain) &*&
-                 result == 1) :
-                (double_chainp(ch, chain) &*&
-                 result == 0)))); @*/
 {
   bool* write_attempt = &RTE_PER_LCORE(write_attempt);
   bool* write_state = &RTE_PER_LCORE(write_state);
   
   unsigned int this_lcore_id = rte_lcore_id();
-  //@ open double_chainp(ch, chain);
-  //@ assert chain->cells |-> ?cells;
-  //@ assert chain->timestamps |-> ?timestamps;
-  //@ assert dchainip(?chi, cells);
-  //@ int size = dchain_index_range_fp(ch);
-  //@ assert times(timestamps, size, ?tmstmps);
-  int has_ind = dchain_impl_get_oldest_index(chain->cells[this_lcore_id], index_out);
-  //@ is_empty_def(ch, chi);
-  //@ insync_both_empty(dchaini_alist_fp(chi), tmstmps, dchain_alist_fp(ch));
-  //@ assert dchaini_is_empty_fp(chi) == dchain_is_empty_fp(ch);
-  if (has_ind) {
-    //assert(*index_out >= 0);
-    //@ get_oldest_index_def(ch, chi);
-    //@ insync_head_matches(dchaini_alist_fp(chi), tmstmps, dchain_alist_fp(ch));
-    //@ assert *index_out |-> ?oi;
-    //@ insync_get_oldest_time(ch, chi, tmstmps);
-    //@ extract_timestamp(timestamps, tmstmps, oi);
-    if (chain->timestamps[this_lcore_id][*index_out] < time) {
-      if (!*write_state) {
-        *write_attempt = true;
-        return 1;
-      }
 
-      //@ glue_timestamp(timestamps, tmstmps, oi);
-      //@ assert nth(oi, tmstmps) == dchain_get_oldest_time_fp(ch);
-      unsigned int lcore_id;
-      vigor_time_t most_recent = -1;
-      RTE_LCORE_FOREACH(lcore_id) {
-        if (chain->timestamps[lcore_id][*index_out] > most_recent) {
-          most_recent = chain->timestamps[lcore_id][*index_out];
-        }
-      }
-
-      if (most_recent >= time) {
-        dchain_update_timestamp(chain, *index_out, most_recent);
-        return 0;
-      }
-
-      return dchain_free_index(chain, *index_out);
-      /*@
-        {
-          assert rez == 1;
-          remove_def(ch, chi, oi);
-          insync_remove(dchaini_alist_fp(chi), dchain_alist_fp(ch),
-                        tmstmps, oi);
-          remove_index_keeps_bnd_sorted(dchain_alist_fp(ch), oi,
-                                        dchain_low_fp(ch), dchain_high_fp(ch));
-          close double_chainp(dchain_remove_index_fp(ch, oi), chain);
-        }
-        @*/
+  int has_ind = dchain_impl_get_oldest_index(chain->active_cells[this_lcore_id], index_out);
+  
+  if (chain->timestamps[this_lcore_id][*index_out] < time) {
+    if (!*write_state) {
+      *write_attempt = true;
+      return 1;
     }
-    //@ glue_timestamp(timestamps, tmstmps, oi);
+
+    unsigned int lcore_id;
+    vigor_time_t most_recent = -1;
+    RTE_LCORE_FOREACH(lcore_id) {
+      if (chain->timestamps[lcore_id][*index_out] > most_recent) {
+        most_recent = chain->timestamps[lcore_id][*index_out];
+      }
+    }
+
+    if (most_recent >= time) {
+      return dchain_update_timestamp(chain, *index_out, most_recent);
+    }
+    
+    return dchain_free_index(chain, *index_out);
   }
-  //@ close double_chainp(ch, chain);
+
   return 0;
 }
 
@@ -1004,10 +984,19 @@ int dchain_free_index(struct DoubleChain* chain, int index)
 
   RTE_LCORE_FOREACH(lcore_id) {
     int new_rez = dchain_impl_free_index(chain->cells[lcore_id], index);
+    dchain_impl_deactivate_index(chain->active_cells[lcore_id], index);
     //assert(new_rez == rez || rez == -1);
     rez = new_rez;
     chain->timestamps[lcore_id][index] = -1;
   }
+
+  #ifdef ENABLE_LOG
+  if (rez) {
+    uint64_t* expires = &RTE_PER_LCORE(expires);
+    (*expires)++;
+    //printf("[%u] FREED %d\n", rte_lcore_id(), index); fflush(stdout);
+  }
+  #endif
 
   return rez;
   /*@
