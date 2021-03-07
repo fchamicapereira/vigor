@@ -174,18 +174,31 @@ int dchain_impl_activate_index(struct dchain_cell* cells, int index)
   int lifted = index + INDEX_SHIFT;
 
   struct dchain_cell *liftedp = cells + lifted;
-
   int lifted_next = liftedp->next;
   int lifted_prev = liftedp->prev;
-  
+
   // The index is already active.
   if (lifted_next != FREE_LIST_HEAD) {
-    return 0;
+    // There is only one element allocated - no point in changing anything
+    if (lifted_next == ALLOC_LIST_HEAD) {
+      return 0;
+    }
+
+    // Unlink it from the middle of the "alloc" chain.
+    struct dchain_cell *lifted_prevp = cells + lifted_prev;
+    lifted_prevp->next = lifted_next;
+
+    struct dchain_cell *lifted_nextp = cells + lifted_next;
+    lifted_nextp->prev = lifted_prev;
+
+    struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
+    int al_head_prev = al_head->prev;
   }
 
   struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
   int al_head_prev = al_head->prev;
   
+  // Link it at the very end - right before the special link.
   liftedp->next = ALLOC_LIST_HEAD;
   liftedp->prev = al_head_prev;
   
