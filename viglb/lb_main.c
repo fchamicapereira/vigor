@@ -99,11 +99,6 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     return device;
   }
 
-  if (!*write_state) {
-    *write_attempt = true;
-    return 1;
-  }
-
   struct LoadBalancedBackend backend = lb_get_backend(balancer, &flow, now,
                                                       config.wan_device);
   CHECK_WRITE_ATTEMPT(write_attempt, write_state);

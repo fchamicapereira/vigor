@@ -60,7 +60,10 @@ struct LoadBalancedBackend lb_get_backend(struct LoadBalancer *balancer,
     if (found) {
       if (dchain_allocate_new_index(balancer->state->flow_chain, &flow_index,
                                     now) != 0) {
-        WRITE_ATTEMPT(write_attempt, write_state);
+        if (!*(write_state)) {
+          (*write_attempt) = true;
+          return backend;
+        }
         struct LoadBalancedFlow *vec_flow;
         uint32_t *vec_flow_id_to_backend_id;
         vector_borrow(balancer->state->flow_heap, flow_index,
@@ -96,7 +99,10 @@ struct LoadBalancedBackend lb_get_backend(struct LoadBalancer *balancer,
                   (void *)vec_backend_index);
     if (0 == dchain_is_index_allocated(balancer->state->active_backends,
                                        backend_index)) {
-      WRITE_ATTEMPT(write_attempt, write_state);
+      if (!*(write_state)) {
+        (*write_attempt) = true;
+        return backend;
+      }
       struct LoadBalancedFlow *flow_key;
       // Nevermind the flow_id_to_backend_id, its entry
       // is automatically invalidated, by erasing the map entry.
