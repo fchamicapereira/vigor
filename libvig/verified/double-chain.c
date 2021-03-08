@@ -438,7 +438,6 @@ int dchain_allocate_new_index(struct DoubleChain* chain,
   if (ret) {
     lcore_id = rte_lcore_id();
     dchain_impl_activate_index(chain->active_cells[lcore_id], *index_out);
-    //printf("[%u] ALLOCATED %d\n", rte_lcore_id(), *index_out); fflush(stdout);
   }
 
   return ret;

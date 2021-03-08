@@ -15,6 +15,9 @@
 
 #include "../nf-util.h"
 
+#define CHECK_WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (*(write_attempt_ptr) && !*(write_state_ptr)) { return; }})
+#define WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (!*(write_state_ptr)) { *(write_attempt_ptr) = true; return; }})
+
 struct LoadBalancer {
   vigor_time_t flow_expiration_time;
 
@@ -57,6 +60,7 @@ struct LoadBalancedBackend lb_get_backend(struct LoadBalancer *balancer,
     if (found) {
       if (dchain_allocate_new_index(balancer->state->flow_chain, &flow_index,
                                     now) != 0) {
+        WRITE_ATTEMPT(write_attempt, write_state);
         struct LoadBalancedFlow *vec_flow;
         uint32_t *vec_flow_id_to_backend_id;
         vector_borrow(balancer->state->flow_heap, flow_index,
@@ -92,6 +96,7 @@ struct LoadBalancedBackend lb_get_backend(struct LoadBalancer *balancer,
                   (void *)vec_backend_index);
     if (0 == dchain_is_index_allocated(balancer->state->active_backends,
                                        backend_index)) {
+      WRITE_ATTEMPT(write_attempt, write_state);
       struct LoadBalancedFlow *flow_key;
       // Nevermind the flow_id_to_backend_id, its entry
       // is automatically invalidated, by erasing the map entry.
@@ -128,6 +133,10 @@ void lb_process_heartbit(struct LoadBalancer *balancer,
               &backend_index) == 0) {
     if (0 != dchain_allocate_new_index(balancer->state->active_backends,
                                        &backend_index, now)) {
+      bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+      bool* write_state = &RTE_PER_LCORE(write_state);
+      WRITE_ATTEMPT(write_attempt, write_state);
+
       struct LoadBalancedBackend *new_backend;
       vector_borrow(balancer->state->backends, backend_index,
                     (void **)&new_backend);

@@ -299,6 +299,10 @@ static void read_static_ft_from_array(struct Map *stat_map,
 
 
 bool nf_init(void) {
+  if (rte_get_master_lcore() != rte_lcore_id()) {
+    return true;
+  }
+  
   unsigned stat_capacity = 8192; // Has to be power of 2
   unsigned capacity = config.dyn_capacity;
   assert(stat_capacity < CAPACITY_UPPER_LIMIT - 1);

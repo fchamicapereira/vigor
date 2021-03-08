@@ -6,12 +6,53 @@
 #include "nat_config.h"
 #include "nf-log.h"
 #include "nf-util.h"
+#include "nf-rss.h"
+
+#define CHECK_WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (*(write_attempt_ptr) && !*(write_state_ptr)) { return 1; }})
+#define WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (!*(write_state_ptr)) { *(write_attempt_ptr) = true; return; }})
 
 struct nf_config config;
+
+uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
+  0xf2, 0xb8, 0x5f, 0xb0, 0x71, 0x0e, 0x98, 0xf5, 
+  0x54, 0x15, 0x99, 0xa1, 0x0f, 0xf5, 0x56, 0xfa, 
+  0x97, 0xa4, 0x76, 0xbc, 0xe2, 0x83, 0x5e, 0xce, 
+  0xc1, 0xa2, 0x05, 0xa1, 0x2b, 0x3d, 0xf1, 0x1d, 
+  0xf5, 0x50, 0xce, 0x67, 0x5e, 0x66, 0x5c, 0xb3, 
+  0x7b, 0xf5, 0x54, 0x8b, 0xea, 0xab, 0x85, 0x81, 
+  0x4f, 0xfb, 0x3d, 0x31
+};
+
+uint8_t hash_key_1[RSS_HASH_KEY_LENGTH] = {
+  0xf2, 0xb8, 0x5f, 0xb0, 0x71, 0x0e, 0x98, 0xf5, 
+  0x54, 0x15, 0x99, 0xa1, 0x0f, 0xf5, 0x56, 0xfa, 
+  0x97, 0xa4, 0x76, 0xbc, 0xe2, 0x83, 0x5e, 0xce, 
+  0xc1, 0xa2, 0x05, 0xa1, 0x2b, 0x3d, 0xf1, 0x1d, 
+  0xf5, 0x50, 0xce, 0x67, 0x5e, 0x66, 0x5c, 0xb3, 
+  0x7b, 0xf5, 0x54, 0x8b, 0xea, 0xab, 0x85, 0x81, 
+  0x4f, 0xfb, 0x3d, 0x31
+};
+
+struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
+  {
+    .rss_key = hash_key_0,
+    .rss_key_len = RSS_HASH_KEY_LENGTH,
+    .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
+  },
+  {
+    .rss_key = hash_key_1,
+    .rss_key_len = RSS_HASH_KEY_LENGTH,
+    .rss_hf = ETH_RSS_IP | ETH_RSS_TCP | ETH_RSS_UDP
+  }
+};
 
 struct FlowManager *flow_manager;
 
 bool nf_init(void) {
+  if (rte_get_master_lcore() != rte_lcore_id()) {
+    return true;
+  }
+
   flow_manager = flow_manager_allocate(
       config.start_port, config.external_addr, config.wan_device,
       config.expiration_time, config.max_flows);
@@ -20,9 +61,13 @@ bool nf_init(void) {
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+
   NF_DEBUG("It is %" PRId64, now);
 
   flow_manager_expire(flow_manager, now);
+  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
   NF_DEBUG("Flows have been expired");
 
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
@@ -83,14 +128,14 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
     uint16_t external_port;
     if (!flow_manager_get_internal(flow_manager, &id, now, &external_port)) {
       NF_DEBUG("New flow");
-
       if (!flow_manager_allocate_flow(flow_manager, &id, device, now,
                                       &external_port)) {
         NF_DEBUG("No space for the flow, dropping");
+        CHECK_WRITE_ATTEMPT(write_attempt, write_state);
         return device;
       }
     }
-
+    CHECK_WRITE_ATTEMPT(write_attempt, write_state);
     NF_DEBUG("Forwarding from ext port:%d", external_port);
 
     ipv4_header->src_addr = config.external_addr;

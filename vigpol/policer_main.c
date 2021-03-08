@@ -139,6 +139,10 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
 }
 
 bool nf_init(void) {
+  if (rte_get_master_lcore() != rte_lcore_id()) {
+    return true;
+  }
+
   unsigned capacity = config.dyn_capacity;
   dynamic_ft = alloc_state(capacity, rte_eth_dev_count());
 
@@ -163,7 +167,6 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
   }
 
   policer_expire_entries(now);
-
   CHECK_WRITE_ATTEMPT(write_attempt, write_state);
 
   if (device == config.lan_device) {
@@ -173,7 +176,6 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
   } else if (device == config.wan_device) {
     // Police incoming packets.
     bool fwd = policer_check_tb(ipv4_header->dst_addr, buffer_length, now);
-
     CHECK_WRITE_ATTEMPT(write_attempt, write_state);
 
     if (fwd) {

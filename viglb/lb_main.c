@@ -7,6 +7,9 @@
 #include "nf-util.h"
 #include "nf-rss.h"
 
+#define CHECK_WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (*(write_attempt_ptr) && !*(write_state_ptr)) { return 1; }})
+#define WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (!*(write_state_ptr)) { *(write_attempt_ptr) = true; return; }})
+
 struct nf_config config;
 
 uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
@@ -42,20 +45,20 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
   }
 };
 
-RTE_DEFINE_PER_LCORE(struct LoadBalancer *, _balancer);
+struct LoadBalancer *balancer;
 
 bool nf_init(void) {
-  struct LoadBalancer ** balancer_ptr = &RTE_PER_LCORE(_balancer);
-  (*balancer_ptr) = lb_allocate_balancer(
+  if (rte_get_master_lcore() != rte_lcore_id()) {
+    return true;
+  }
+
+  balancer = lb_allocate_balancer(
       config.flow_capacity, config.backend_capacity, config.cht_height,
       config.backend_expiration_time, config.flow_expiration_time);
-  return (*balancer_ptr) != NULL;
+  return balancer != NULL;
 }
 
 int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_time_t now) {
-  struct LoadBalancer ** balancer_ptr = &RTE_PER_LCORE(_balancer);
-  struct LoadBalancer *balancer = (*balancer_ptr);
-
   bool* write_attempt = &RTE_PER_LCORE(write_attempt);
   bool* write_state = &RTE_PER_LCORE(write_state);
 
@@ -66,10 +69,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
   }
 
   lb_expire_backends(balancer, now);
-
-  if (*write_attempt && !*write_state) {
-    return 1;
-  }
+  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
 
   struct ether_hdr *ether_header = nf_then_get_ether_header(buffer);
   uint8_t *ip_options;
@@ -94,12 +94,8 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
                                    .protocol = ipv4_header->next_proto_id };
 
   if (device != config.wan_device) {
-    if (!*write_state) {
-      *write_attempt = true;
-      return 1;
-    }
-
     lb_process_heartbit(balancer, &flow, ether_header->s_addr, device, now);
+    CHECK_WRITE_ATTEMPT(write_attempt, write_state);
     return device;
   }
 
@@ -110,6 +106,7 @@ int nf_process(uint16_t device, uint8_t* buffer, uint16_t buffer_length, vigor_t
 
   struct LoadBalancedBackend backend = lb_get_backend(balancer, &flow, now,
                                                       config.wan_device);
+  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
 
   concretize_devices(&backend.nic, rte_eth_dev_count());
 

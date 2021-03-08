@@ -12,6 +12,9 @@
 
 #include "state.h"
 
+#define CHECK_WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (*(write_attempt_ptr) && !*(write_state_ptr)) { return 1; }})
+#define WRITE_ATTEMPT(write_attempt_ptr, write_state_ptr) ({if (!*(write_state_ptr)) { *(write_attempt_ptr) = true; return 1; }})
+
 struct FlowManager {
   struct State *state;
   uint32_t expiration_time; /*nanoseconds*/
@@ -43,6 +46,10 @@ bool flow_manager_allocate_flow(struct FlowManager *manager, struct FlowId *id,
   if (dchain_allocate_new_index(manager->state->heap, &index, time) == 0) {
     return false;
   }
+
+  bool* write_attempt = &RTE_PER_LCORE(write_attempt);
+  bool* write_state = &RTE_PER_LCORE(write_state);
+  CHECK_WRITE_ATTEMPT(write_attempt, write_state);
 
   *external_port = manager->state->start_port + index;
 
